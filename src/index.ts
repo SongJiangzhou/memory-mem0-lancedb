@@ -19,7 +19,7 @@ function resolveConfig(raw?: Partial<PluginConfig>): PluginConfig {
     lancedbPath: raw?.lancedbPath || '~/.openclaw/workspace/data/memory_lancedb',
     mem0BaseUrl: raw?.mem0BaseUrl || 'https://api.mem0.ai',
     mem0ApiKey: raw?.mem0ApiKey || '',
-    outboxDbPath: raw?.outboxDbPath || '~/.openclaw/workspace/data/outbox.db',
+    outboxDbPath: raw?.outboxDbPath || '~/.openclaw/workspace/data/outbox.json',
   };
 }
 
@@ -104,7 +104,7 @@ export default function register(api: OpenClawApi) {
     },
   );
 
-  // 自定义写入（写 Mem0，后续可接 outbox/LanceDB 同步）
+  // 自定义写入（统一走 TS bridge，同步到本地 LanceDB，按配置可先写 Mem0）
   api.registerTool(
     {
       name: 'memoryStore',

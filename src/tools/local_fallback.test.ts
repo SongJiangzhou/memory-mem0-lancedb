@@ -14,7 +14,7 @@ test('store/search works with local fallback when mem0ApiKey is missing', async 
       lancedbPath: dir,
       mem0BaseUrl: 'http://127.0.0.1:9',
       mem0ApiKey: '',
-      outboxDbPath: join(dir, 'outbox.db'),
+      outboxDbPath: join(dir, 'outbox.json'),
     };
 
     const store = new MemoryStoreTool(cfg);

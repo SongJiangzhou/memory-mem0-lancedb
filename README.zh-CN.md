@@ -28,7 +28,7 @@ bash scripts/install.sh
           "mem0ApiKey": "your-mem0-api-key（可选，留空则为纯本地模式）",
           "mem0BaseUrl": "https://api.mem0.ai",
           "lancedbPath": "~/.openclaw/workspace/data/memory_lancedb",
-          "outboxDbPath": "~/.openclaw/workspace/data/outbox.db"
+          "outboxDbPath": "~/.openclaw/workspace/data/outbox.json"
         }
       }
     }
@@ -97,7 +97,7 @@ bash scripts/install.sh
 
 ## 架构
 
-1. 写入链路：Agent -> `memoryStore` -> Mem0 API -> outbox -> LanceDB（启用 Mem0 时为异步链路）
+1. 写入链路：Agent -> `memoryStore` -> TypeScript bridge（`uid` + `outbox` + `sync-engine`）-> LanceDB；如配置 Mem0，会先创建 Mem0 事件
 2. 读取链路：Agent -> `memory_search` / `memorySearch` -> 优先 LanceDB -> 回退 Mem0
 
 ## 开发
