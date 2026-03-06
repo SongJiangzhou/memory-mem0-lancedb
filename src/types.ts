@@ -1,5 +1,5 @@
 /**
- * Memory record structure aligned with memory_bridge schema
+ * Memory record structure aligned with the migrated TS bridge schema
  */
 export interface MemoryRecord {
   memory_uid: string;
@@ -84,4 +84,44 @@ export interface StoreResult {
   memoryUid?: string;
   eventId?: string;
   error?: string;
+}
+
+export type OutboxStatus = 'pending' | 'processing' | 'done' | 'failed';
+
+export interface OutboxItem {
+  id: number;
+  idempotencyKey: string;
+  payload: string;
+  status: OutboxStatus;
+}
+
+export interface MemorySyncPayload {
+  user_id: string;
+  run_id?: string | null;
+  scope: 'long-term' | 'session';
+  text: string;
+  categories?: string[];
+  tags?: string[];
+  ts_event: string;
+  source: 'openclaw';
+  status: 'active' | 'superseded' | 'deleted';
+  sensitivity?: 'public' | 'internal' | 'confidential' | 'restricted';
+  openclaw_refs?: {
+    workspace_path?: string | null;
+    file_path?: string | null;
+    line_start?: number | null;
+    line_end?: number | null;
+  };
+  mem0?: {
+    mem0_id?: string | null;
+    hash?: string | null;
+    event_id?: string | null;
+  };
+}
+
+export type MemorySyncStatus = 'done' | 'duplicate' | 'no_pending' | 'failed_visibility';
+
+export interface MemorySyncResult {
+  status: MemorySyncStatus;
+  memory_uid: string;
 }

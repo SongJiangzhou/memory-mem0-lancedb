@@ -28,7 +28,7 @@ Add the plugin entry to `openclaw.json`:
           "mem0ApiKey": "your-mem0-api-key (optional; leave empty for local-only mode)",
           "mem0BaseUrl": "https://api.mem0.ai",
           "lancedbPath": "~/.openclaw/workspace/data/memory_lancedb",
-          "outboxDbPath": "~/.openclaw/workspace/data/outbox.db"
+          "outboxDbPath": "~/.openclaw/workspace/data/outbox.json"
         }
       }
     }
@@ -97,7 +97,7 @@ Stores a memory record and syncs it to LanceDB, optionally via Mem0.
 
 ## Architecture
 
-1. Write path: Agent -> `memoryStore` -> Mem0 API -> outbox -> LanceDB (async path when Mem0 is enabled)
+1. Write path: Agent -> `memoryStore` -> TypeScript bridge (`uid` + `outbox` + `sync-engine`) -> LanceDB, with optional Mem0 event creation first
 2. Read path: Agent -> `memory_search` / `memorySearch` -> LanceDB first -> Mem0 fallback
 
 ## Development
