@@ -1,19 +1,19 @@
-# Mem0 + LanceDB OpenClaw Memory Plugin
+# Mem0 + LanceDB OpenClaw 记忆插件
 
-[中文说明](./README.zh-CN.md)
+[English README](./README.md)
 
-An OpenClaw memory plugin that uses Mem0 as the control plane and LanceDB as the retrieval layer.
+这是一个 OpenClaw 记忆插件，使用 Mem0 作为控制面，使用 LanceDB 作为检索层。
 
-## Installation
+## 安装
 
 ***REMOVED***bash
 cd plugins/memory-mem0-lancedb
 bash scripts/install.sh
 ***REMOVED***
 
-## Configuration
+## 配置
 
-Add the plugin entry to `openclaw.json`:
+在 `openclaw.json` 中添加以下插件配置：
 
 ***REMOVED***
 {
@@ -25,7 +25,7 @@ Add the plugin entry to `openclaw.json`:
       "memory-mem0-lancedb": {
         "enabled": true,
         "config": {
-          "mem0ApiKey": "your-mem0-api-key (optional; leave empty for local-only mode)",
+          "mem0ApiKey": "your-mem0-api-key（可选，留空则为纯本地模式）",
           "mem0BaseUrl": "https://api.mem0.ai",
           "lancedbPath": "~/.openclaw/workspace/data/memory_lancedb",
           "outboxDbPath": "~/.openclaw/workspace/data/outbox.db"
@@ -36,15 +36,15 @@ Add the plugin entry to `openclaw.json`:
 }
 ***REMOVED***
 
-## Tools
+## 提供的工具
 
 ### `memory_search`
 
-Primary memory-slot search tool backed by LanceDB, with optional Mem0 fallback.
+主记忆槽搜索工具，优先从 LanceDB 检索，必要时回退到 Mem0。
 
 ***REMOVED***
 {
-  "query": "diet preference",
+  "query": "用户的饮食偏好",
   "userId": "user_123",
   "topK": 5,
   "filters": {
@@ -56,7 +56,7 @@ Primary memory-slot search tool backed by LanceDB, with optional Mem0 fallback.
 
 ### `memory_get`
 
-Reads a snippet from a workspace-relative memory source path.
+按工作区相对路径读取记忆源文件片段。
 
 ***REMOVED***
 {
@@ -68,11 +68,11 @@ Reads a snippet from a workspace-relative memory source path.
 
 ### `memorySearch`
 
-Custom hybrid search API exposed by the plugin.
+插件额外暴露的混合检索接口。
 
 ***REMOVED***
 {
-  "query": "diet preference",
+  "query": "用户的饮食偏好",
   "userId": "user_123",
   "topK": 5,
   "filters": {
@@ -84,23 +84,23 @@ Custom hybrid search API exposed by the plugin.
 
 ### `memoryStore`
 
-Stores a memory record and syncs it to LanceDB, optionally via Mem0.
+写入一条记忆，并将其同步到 LanceDB；如果配置了 Mem0，则会同时走 Mem0 流程。
 
 ***REMOVED***
 {
-  "text": "The user likes science fiction movies.",
+  "text": "用户喜欢科幻电影。",
   "userId": "user_123",
   "scope": "long-term",
   "categories": ["preference", "entertainment"]
 }
 ***REMOVED***
 
-## Architecture
+## 架构
 
-1. Write path: Agent -> `memoryStore` -> Mem0 API -> outbox -> LanceDB (async path when Mem0 is enabled)
-2. Read path: Agent -> `memory_search` / `memorySearch` -> LanceDB first -> Mem0 fallback
+1. 写入链路：Agent -> `memoryStore` -> Mem0 API -> outbox -> LanceDB（启用 Mem0 时为异步链路）
+2. 读取链路：Agent -> `memory_search` / `memorySearch` -> 优先 LanceDB -> 回退 Mem0
 
-## Development
+## 开发
 
 ***REMOVED***bash
 npm install
