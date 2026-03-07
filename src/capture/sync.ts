@@ -1,5 +1,5 @@
 import { buildMemoryUid } from '../bridge/uid';
-import type { MemoryAdapter } from '../bridge/adapter';
+import { LanceDbMemoryAdapter, type MemoryAdapter } from '../bridge/adapter';
 import type { Mem0ExtractedMemory } from '../control/mem0';
 import { FileAuditStore } from '../audit/store';
 import type { MemoryRecord, MemorySyncPayload } from '../types';
@@ -37,7 +37,7 @@ export async function syncCapturedMemories(params: {
       continue;
     }
 
-    const record = toRecord(memoryUid, memoryPayload);
+    const record = toRecord(memoryUid, memoryPayload, params.adapter);
     await params.auditStore.append(record);
     await params.adapter.upsertMemory({
       memory_uid: memoryUid,
@@ -82,7 +82,7 @@ function toMemoryPayload(
   };
 }
 
-function toRecord(memoryUid: string, memory: MemorySyncPayload): MemoryRecord {
+function toRecord(memoryUid: string, memory: MemorySyncPayload, adapter: MemoryAdapter): MemoryRecord {
   return {
     memory_uid: memoryUid,
     user_id: memory.user_id,
@@ -98,9 +98,9 @@ function toRecord(memoryUid: string, memory: MemorySyncPayload): MemoryRecord {
     openclaw_refs: memory.openclaw_refs || {},
     mem0: memory.mem0 || {},
     lancedb: {
-      table: 'memory_records',
+      table: adapter instanceof LanceDbMemoryAdapter ? (adapter as any).config?.dimension === 16 ? 'memory_records' : `memory_records_d${(adapter as any).config?.dimension || 16}` : 'memory_records',
       row_key: memoryUid,
-      vector_dim: null,
+      vector_dim: adapter instanceof LanceDbMemoryAdapter ? ((adapter as any).config?.dimension || 16) : 16,
       index_version: null,
     },
   };

@@ -1,7 +1,7 @@
 import { FileAuditStore } from '../audit/store';
 import type { Mem0Client } from '../control/mem0';
 import { buildMemoryUid } from './uid';
-import type { MemoryAdapter } from './adapter';
+import { LanceDbMemoryAdapter, type MemoryAdapter } from './adapter';
 import type { FileOutbox } from './outbox';
 import type { MemoryRecord, MemorySyncPayload, MemorySyncResult } from '../types';
 
@@ -109,9 +109,9 @@ export class MemorySyncEngine {
       openclaw_refs: memory.openclaw_refs || {},
       mem0: memory.mem0 || {},
       lancedb: {
-        table: 'memory_records',
+        table: this.adapter instanceof LanceDbMemoryAdapter ? (this.adapter as any).config?.dimension === 16 ? 'memory_records' : `memory_records_d${(this.adapter as any).config?.dimension || 16}` : 'memory_records',
         row_key: memoryUid,
-        vector_dim: null,
+        vector_dim: (this.adapter as any).config?.dimension || 16,
         index_version: null,
       },
     };
