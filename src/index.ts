@@ -29,7 +29,7 @@ type OpenClawApi = {
   registerHook?: (events: string | string[], handler: (...args: any[]) => any, opts?: any) => void;
 };
 
-function resolveConfig(raw?: Partial<PluginConfig>): PluginConfig {
+function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
   return {
     lancedbPath: raw?.lancedbPath || '~/.openclaw/workspace/data/memory_lancedb',
     mem0BaseUrl: raw?.mem0BaseUrl || 'https://api.mem0.ai',
@@ -48,12 +48,47 @@ function resolveConfig(raw?: Partial<PluginConfig>): PluginConfig {
       requireAssistantReply: raw?.autoCapture?.requireAssistantReply ?? true,
       maxCharsPerMessage: raw?.autoCapture?.maxCharsPerMessage || 2000,
     },
+    embedding: resolveEmbeddingConfig(raw, apiConfig),
   };
+}
+
+function resolveEmbeddingConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig['embedding'] {
+  if (raw?.embedding && raw.embedding.provider !== 'fake') {
+    return raw.embedding;
+  }
+
+  const ms = apiConfig?.agents?.defaults?.memorySearch;
+  if (ms?.enabled && ms?.provider && ['openai', 'gemini', 'ollama'].includes(ms.provider)) {
+    const p = ms.provider;
+    let fallbackModel = 'text-embedding-3-small';
+    let defaultDim = 1536;
+    let defaultUrl = 'https://api.openai.com';
+
+    if (p === 'gemini') {
+      fallbackModel = 'models/text-embedding-004';
+      defaultDim = 768;
+      defaultUrl = 'https://generativelanguage.googleapis.com';
+    } else if (p === 'ollama') {
+      fallbackModel = 'nomic-embed-text';
+      defaultDim = 768;
+      defaultUrl = 'http://127.0.0.1:11434';
+    }
+
+    return {
+      provider: p as any,
+      baseUrl: ms.remote?.baseUrl || defaultUrl,
+      apiKey: ms.remote?.apiKey || '',
+      model: ms.model || fallbackModel,
+      dimension: defaultDim,
+    };
+  }
+
+  return { provider: 'fake', baseUrl: '', apiKey: '', model: '', dimension: 16 };
 }
 
 // OpenClaw 插件入口必须是函数或带 register() 的对象，不能直接导出 class。
 export default function register(api: OpenClawApi) {
-  const cfg = resolveConfig(api.pluginConfig);
+  const cfg = resolveConfig(api.pluginConfig, api.config);
   const customSearch = new MemorySearchTool(cfg);
   const customStore = new MemoryStoreTool(cfg);
   const customGet = new MemoryGetTool(cfg);
@@ -207,7 +242,7 @@ export default function register(api: OpenClawApi) {
             scope: payload.scope,
             eventId: submitted.event_id,
             auditStore: new FileAuditStore(cfg.auditStorePath),
-            adapter: new LanceDbMemoryAdapter(cfg.lancedbPath),
+            adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
           });
           return { submitted, confirmation, synced };
         }

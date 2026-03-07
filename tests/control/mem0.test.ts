@@ -14,6 +14,7 @@ function buildConfig(): PluginConfig {
     auditStorePath: '/tmp/audit.jsonl',
     autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' },
     autoCapture: { enabled: false, scope: 'long-term', requireAssistantReply: true, maxCharsPerMessage: 2000 },
+  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
   };
 }
 

@@ -22,7 +22,7 @@ export class MemoryStoreTool {
       const eventId = `local-${crypto.randomUUID()}`;
       const outbox = new FileOutbox(this.config.outboxDbPath);
       const auditStore = new FileAuditStore(this.config.auditStorePath);
-      const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath);
+      const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath, this.config.embedding);
       const mem0Client = new HttpMem0Client(this.config);
       const engine = new MemorySyncEngine(outbox, auditStore, adapter, mem0Client);
       const payload = this.buildPayload({
