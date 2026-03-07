@@ -44,13 +44,11 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
   async upsertMemory(record: MemoryAdapterRecord): Promise<void> {
     const table = await openMemoryTable(this.lancedbPath);
     const row = toLanceRow(record);
-    const existing = await table.query().where(`memory_uid = '${row.memory_uid}'`).limit(1).toArray();
-
-    if (existing.length > 0) {
-      await table.delete(`memory_uid = '${row.memory_uid}'`);
-    }
-
-    await table.add([row as unknown as Record<string, unknown>]);
+    
+    await table.mergeInsert('memory_uid')
+      .whenMatchedUpdateAll()
+      .whenNotMatchedInsertAll()
+      .execute([row as unknown as Record<string, unknown>]);
   }
 
   async exists(memoryUid: string): Promise<boolean> {
@@ -69,8 +67,8 @@ function toLanceRow(record: MemoryAdapterRecord): MemoryRow {
     run_id: memory.run_id || '',
     scope: memory.scope,
     text: memory.text,
-    categories: JSON.stringify(memory.categories || []),
-    tags: JSON.stringify(memory.tags || []),
+    categories: Array.isArray(memory.categories) ? memory.categories : [],
+    tags: Array.isArray(memory.tags) ? memory.tags : [],
     ts_event: memory.ts_event,
     source: memory.source,
     status: memory.status,

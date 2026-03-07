@@ -5,6 +5,7 @@ import { LanceDbMemoryAdapter } from '../bridge/adapter';
 import { FileOutbox } from '../bridge/outbox';
 import { MemorySyncEngine } from '../bridge/sync-engine';
 import { HttpMem0Client } from '../control/mem0';
+import { sanitizeMemoryText } from '../capture/security';
 import type { MemorySyncPayload, PluginConfig, StoreParams, StoreResult } from '../types';
 
 export class MemoryStoreTool {
@@ -53,17 +54,18 @@ export class MemoryStoreTool {
     categories: string[];
     eventId: string;
   }): MemorySyncPayload {
+    const { cleanText, isRestricted } = sanitizeMemoryText(params.text);
     return {
       user_id: params.userId,
       run_id: params.metadata.run_id || '',
       scope: params.scope,
-      text: params.text,
+      text: cleanText,
       categories: params.categories,
       tags: Array.isArray(params.metadata.tags) ? params.metadata.tags : [],
       ts_event: new Date().toISOString(),
       source: 'openclaw',
       status: 'active',
-      sensitivity: params.metadata.sensitivity || 'internal',
+      sensitivity: isRestricted ? 'restricted' : (params.metadata.sensitivity || 'internal'),
       openclaw_refs: params.metadata.openclaw_refs || {},
       mem0: {
         event_id: null,

@@ -3,6 +3,8 @@ import { openMemoryTable } from '../db/table';
 import type { PluginConfig, SearchParams, SearchResult } from '../types';
 
 const RRF_K = 60;
+const MMR_LAMBDA = 0.5;
+const SIMILARITY_THRESHOLD = 0.85;
 
 export class HotMemorySearch {
   private readonly config: PluginConfig;
@@ -15,23 +17,32 @@ export class HotMemorySearch {
     const { query, userId, topK = 5, filters } = params;
     const tbl = await openMemoryTable(this.config.lancedbPath);
     const whereClause = this.buildWhereClause(userId, filters);
-    const ftsRows = await this.searchFts(tbl, query, whereClause, topK);
-    const vectorRows = await this.searchVector(tbl, query, whereClause, topK);
-    const rows = this.mergeRrf(ftsRows, vectorRows, topK);
+    
+    // We fetch more for MMR pool
+    const fetchK = topK * 3;
+    const ftsRows = await this.searchFts(tbl, query, whereClause, fetchK);
+    const vectorRows = await this.searchVector(tbl, query, whereClause, fetchK);
+    
+    let rows = this.mergeRrf(ftsRows, vectorRows, fetchK);
 
     if (rows.length === 0) {
-      const fallbackRows = await tbl.query().where(whereClause).limit(topK).toArray();
+      const fallbackRows = await tbl.query().where(whereClause).limit(fetchK).toArray();
       const needle = query.toLowerCase();
+      rows = fallbackRows.filter((row: any) => String(row.text || '').toLowerCase().includes(needle));
+    }
+
+    if (rows.length > 0) {
+      const queryVector = embedText(query);
+      const ranked = this.applyTimeDecay(rows);
+      const deduplicated = this.applyMmr(ranked, queryVector, topK);
       return {
-        memories: fallbackRows
-          .filter((row: any) => String(row.text || '').toLowerCase().includes(needle))
-          .map((row: any) => this.toMemoryRecord(row)),
+        memories: deduplicated.map((row) => this.toMemoryRecord(row)),
         source: 'lancedb',
       };
     }
 
     return {
-      memories: rows.map((row) => this.toMemoryRecord(row)),
+      memories: [],
       source: 'lancedb',
     };
   }
@@ -62,11 +73,11 @@ export class HotMemorySearch {
   private async searchVector(tbl: Awaited<ReturnType<typeof openMemoryTable>>, query: string, whereClause: string, topK: number): Promise<any[]> {
     try {
       const queryVector = embedText(query);
-      const rows = await tbl.query().where(whereClause).limit(Math.max(topK * 4, topK)).toArray();
-      return rows
-        .map((row: any) => ({ ...row, __score: this.cosineSimilarity(queryVector, row.vector || []) }))
-        .sort((left: any, right: any) => right.__score - left.__score)
-        .slice(0, topK);
+      return await (tbl as any)
+        .search(queryVector)
+        .where(whereClause)
+        .limit(topK)
+        .toArray();
     } catch {
       return [];
     }
@@ -79,9 +90,9 @@ export class HotMemorySearch {
     this.addRrfScores(scored, vectorRows);
 
     return Array.from(scored.values())
-      .sort((left, right) => right.score - left.score)
-      .slice(0, topK)
-      .map((entry) => entry.row);
+      .map((entry) => ({ ...entry.row, __rrf_score: entry.score }))
+      .sort((left, right) => right.__rrf_score - left.__rrf_score)
+      .slice(0, topK);
   }
 
   private addRrfScores(scored: Map<string, { row: any; score: number }>, rows: any[]): void {
@@ -97,6 +108,72 @@ export class HotMemorySearch {
         scored.set(key, { row, score: rrf });
       }
     });
+  }
+
+  private applyTimeDecay(rows: any[]): any[] {
+    const now = Date.now();
+    return rows.map((r) => {
+      let ageMs = now - new Date(r.ts_event).getTime();
+      if (isNaN(ageMs) || ageMs < 0) ageMs = 0;
+      const decay = Math.exp(-ageMs / (1000 * 60 * 60 * 24 * 30)); // 30-day half-life roughly
+      const baseScore = r.__rrf_score || 1;
+      return {
+        ...r,
+        __final_score: baseScore * (0.8 + 0.2 * decay),
+      };
+    }).sort((a, b) => b.__final_score - a.__final_score);
+  }
+
+  private applyMmr(rows: any[], queryVector: number[], topK: number): any[] {
+    if (rows.length === 0) return [];
+    
+    const selected: any[] = [];
+    const candidates = [...rows];
+
+    while (selected.length < topK && candidates.length > 0) {
+      let bestIdx = -1;
+      let bestScore = -Infinity;
+
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+        
+        // relevance to query
+        const rel = candidate.__final_score; 
+        
+        let maxSim = 0;
+        for (const sel of selected) {
+          const sim = this.cosineSimilarity(candidate.vector || [], sel.vector || []);
+          if (sim > maxSim) maxSim = sim;
+        }
+
+        const mmrScore = MMR_LAMBDA * rel - (1 - MMR_LAMBDA) * maxSim;
+
+        if (mmrScore > bestScore) {
+          bestScore = mmrScore;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx !== -1) {
+        const chosen = candidates.splice(bestIdx, 1)[0];
+        // simple deduplication cutoff
+        let isTooSimilar = false;
+        for (const sel of selected) {
+          if (this.cosineSimilarity(chosen.vector || [], sel.vector || []) > SIMILARITY_THRESHOLD) {
+            isTooSimilar = true;
+            break;
+          }
+        }
+        
+        if (!isTooSimilar) {
+          selected.push(chosen);
+        }
+      } else {
+        break;
+      }
+    }
+
+    return selected;
   }
 
   private cosineSimilarity(left: number[], right: number[]): number {
@@ -131,8 +208,8 @@ export class HotMemorySearch {
       run_id: row.run_id || null,
       scope: row.scope,
       text: row.text,
-      categories: this.parseJsonArray(row.categories),
-      tags: this.parseJsonArray(row.tags),
+      categories: Array.isArray(row.categories) ? row.categories : [],
+      tags: Array.isArray(row.tags) ? row.tags : [],
       ts_event: row.ts_event,
       source: 'openclaw' as const,
       status: row.status,
@@ -150,14 +227,6 @@ export class HotMemorySearch {
         index_version: 'rrf-v1',
       },
     };
-  }
-
-  private parseJsonArray(value: string): string[] {
-    try {
-      return JSON.parse(value || '[]');
-    } catch {
-      return [];
-    }
   }
 
   private parseJsonObj(value: string): Record<string, any> {

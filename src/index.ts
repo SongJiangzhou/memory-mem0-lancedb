@@ -7,6 +7,7 @@ import { buildAutoCapturePayload } from './capture/auto';
 import { syncCapturedMemories } from './capture/sync';
 import { HttpMem0Client } from './control/mem0';
 import { runAutoRecall } from './recall/auto';
+import { Mem0Poller } from './bridge/poller';
 import type { PluginConfig } from './types';
 
 type OpenClawApi = {
@@ -49,6 +50,9 @@ export default function register(api: OpenClawApi) {
   const customSearch = new MemorySearchTool(cfg);
   const customStore = new MemoryStoreTool(cfg);
   const customGet = new MemoryGetTool(cfg);
+
+  const poller = new Mem0Poller(cfg);
+  poller.start();
 
   // memory slot 主工具：完全走新机制（不再桥接 memory-core）
   api.registerTool({

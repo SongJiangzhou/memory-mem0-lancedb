@@ -23,8 +23,8 @@ export async function openMemoryTable(dbPath: string) {
     run_id: '',
     scope: 'long-term',
     text: '',
-    categories: '[]',
-    tags: '[]',
+    categories: [''],
+    tags: [''],
     ts_event: new Date().toISOString(),
     source: 'openclaw',
     status: 'deleted',
@@ -39,6 +39,14 @@ export async function openMemoryTable(dbPath: string) {
 
   // 删掉占位记录
   await tbl.delete(`memory_uid = '__init__'`);
+
+  try {
+    await tbl.createIndex('user_id'); // Scalar index
+    await tbl.createIndex('status'); // Scalar index
+    await tbl.createIndex('scope'); // Scalar index
+  } catch (err) {
+    console.warn('Index creation failed or already exists', err);
+  }
 
   return tbl;
 }
