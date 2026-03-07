@@ -1,4 +1,5 @@
 import { LanceDbMemoryAdapter } from './adapter';
+import { hasMem0Auth, buildMem0Headers } from '../control/auth';
 import type { PluginConfig } from '../types';
 
 export class Mem0Poller {
@@ -28,7 +29,7 @@ export class Mem0Poller {
   }
 
   async poll() {
-    if (!this.config.mem0ApiKey || !this.config.mem0BaseUrl) {
+    if (!hasMem0Auth(this.config) || !this.config.mem0BaseUrl) {
       return;
     }
 
@@ -38,9 +39,7 @@ export class Mem0Poller {
       
       const response = await fetch(url.toString(), {
         method: 'GET',
-        headers: {
-          Authorization: `Token ${this.config.mem0ApiKey}`,
-        },
+        headers: buildMem0Headers(this.config),
       });
 
       if (!response.ok) {

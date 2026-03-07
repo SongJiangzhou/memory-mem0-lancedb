@@ -36,13 +36,31 @@ function buildRecord(): MemoryRecord {
   };
 }
 
-test('http mem0 client returns unavailable when api key is missing', async () => {
+test('http mem0 client returns unavailable when api key is missing for cloud base url', async () => {
   const cfg = { ...buildConfig(), mem0ApiKey: '' };
   const client = new HttpMem0Client(cfg);
 
   const result = await client.storeMemory(buildRecord());
 
   assert.equal(result.status, 'unavailable');
+});
+
+test('http mem0 client allows local mem0 base url without api key', async () => {
+  let authHeader: string | null = 'unset';
+  const fetchStub = (async (_input: string | URL | Request, init?: RequestInit) => {
+    authHeader = (init?.headers as Record<string, string> | undefined)?.Authorization || null;
+    return {
+      ok: true,
+      json: async () => ({ id: 'mem0-local-1', event_id: 'evt-local-1', hash: 'h-local-1' }),
+    };
+  }) as unknown as typeof fetch;
+  const cfg = { ...buildConfig(), mem0BaseUrl: 'http://127.0.0.1:8000', mem0ApiKey: '' };
+  const client = new HttpMem0Client(cfg, fetchStub);
+
+  const result = await client.storeMemory(buildRecord());
+
+  assert.equal(result.status, 'submitted');
+  assert.equal(authHeader, null);
 });
 
 test('http mem0 client returns submitted result with event id', async () => {
