@@ -89,7 +89,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
             items: [
               {
                 id: 'mem0-captured-1',
-                memory: '用户偏好使用中文回复',
+                memory: 'User prefers replies in English',
                 categories: ['preference'],
                 hash: 'hash-1',
               },
@@ -125,10 +125,10 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
     assert.ok(hook);
 
     const result = await hook?.handler({
-      userId: 'railgun',
+      userId: 'user-1',
       runId: 'run-1',
-      latestUserMessage: '用户要求以后都用中文回复',
-      latestAssistantMessage: '好的，之后我会使用中文回复。',
+      latestUserMessage: 'Please reply in English from now on',
+      latestAssistantMessage: 'Understood. I will reply in English from now on.',
     });
 
     assert.equal(result?.confirmation?.status, 'confirmed');
@@ -137,7 +137,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
     const auditStore = new FileAuditStore(join(dir, 'audit', 'memory_records.jsonl'));
     const records = await auditStore.readAll();
     assert.equal(records.length, 1);
-    assert.equal(records[0]?.text, '用户偏好使用中文回复');
+    assert.equal(records[0]?.text, 'User prefers replies in English');
     assert.equal(records[0]?.mem0?.event_id, 'evt-capture');
   } finally {
     global.fetch = originalFetch;

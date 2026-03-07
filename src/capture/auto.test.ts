@@ -16,9 +16,9 @@ function buildConfig(overrides?: Partial<AutoCaptureConfig>): AutoCaptureConfig 
 
 test('auto capture builds payload from latest user and assistant messages', () => {
   const payload = buildAutoCapturePayload({
-    userId: 'railgun',
-    latestUserMessage: '用户要求以后都用中文回复',
-    latestAssistantMessage: '好的，之后我会使用中文回复。',
+    userId: 'user-1',
+    latestUserMessage: 'Please reply in English from now on',
+    latestAssistantMessage: 'Understood. I will reply in English from now on.',
     config: buildConfig(),
   });
 
@@ -30,8 +30,8 @@ test('auto capture builds payload from latest user and assistant messages', () =
 
 test('auto capture returns null when assistant reply is required but missing', () => {
   const payload = buildAutoCapturePayload({
-    userId: 'railgun',
-    latestUserMessage: '用户要求以后都用中文回复',
+    userId: 'user-1',
+    latestUserMessage: 'Please reply in English from now on',
     latestAssistantMessage: '',
     config: buildConfig({ requireAssistantReply: true }),
   });
@@ -41,15 +41,15 @@ test('auto capture returns null when assistant reply is required but missing', (
 
 test('auto capture produces stable idempotency key for identical turn content', () => {
   const first = buildAutoCapturePayload({
-    userId: 'railgun',
-    latestUserMessage: '用户要求以后都用中文回复',
-    latestAssistantMessage: '好的，之后我会使用中文回复。',
+    userId: 'user-1',
+    latestUserMessage: 'Please reply in English from now on',
+    latestAssistantMessage: 'Understood. I will reply in English from now on.',
     config: buildConfig(),
   });
   const second = buildAutoCapturePayload({
-    userId: 'railgun',
-    latestUserMessage: '用户要求以后都用中文回复',
-    latestAssistantMessage: '好的，之后我会使用中文回复。',
+    userId: 'user-1',
+    latestUserMessage: 'Please reply in English from now on',
+    latestAssistantMessage: 'Understood. I will reply in English from now on.',
     config: buildConfig(),
   });
 
@@ -58,7 +58,7 @@ test('auto capture produces stable idempotency key for identical turn content', 
 
 test('auto capture truncates oversized messages', () => {
   const payload = buildAutoCapturePayload({
-    userId: 'railgun',
+    userId: 'user-1',
     latestUserMessage: 'a'.repeat(128),
     latestAssistantMessage: 'b'.repeat(128),
     config: buildConfig({ maxCharsPerMessage: 16 }),

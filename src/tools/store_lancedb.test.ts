@@ -22,16 +22,16 @@ test('store writes to LanceDB and is idempotent', async () => {
     };
     const store = new MemoryStoreTool(cfg);
 
-    const r1 = await store.execute({ text: '用户偏好：中文回复', userId: 'railgun', scope: 'long-term', categories: ['preference'] });
+    const r1 = await store.execute({ text: 'User preference: English replies', userId: 'user-1', scope: 'long-term', categories: ['preference'] });
     assert.equal(r1.success, true);
     assert.equal(r1.syncStatus, 'partial');
 
-    // 幂等：同一条写两次，LanceDB 里只应有一条
-    const r2 = await store.execute({ text: '用户偏好：中文回复', userId: 'railgun', scope: 'long-term', categories: ['preference'] });
+    // Idempotency: writing the same memory twice should keep a single row in LanceDB.
+    const r2 = await store.execute({ text: 'User preference: English replies', userId: 'user-1', scope: 'long-term', categories: ['preference'] });
     assert.equal(r2.syncStatus, 'partial');
 
     const tbl = await openMemoryTable(dir);
-    const rows = await tbl.query().where(`user_id = 'railgun'`).toArray();
+    const rows = await tbl.query().where(`user_id = 'user-1'`).toArray();
     assert.equal(rows.length, 1, `expected 1 row, got ${rows.length}`);
     assert.ok(rows[0]?.vector && typeof rows[0].vector.length === 'number', 'expected stored vector-like field');
     assert.equal(rows[0]?.vector.length, 16);

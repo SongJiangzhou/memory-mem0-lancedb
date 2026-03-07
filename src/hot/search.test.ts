@@ -24,31 +24,31 @@ test('hot plane search returns canonical memory rows with filters', async () => 
     const hot = new HotMemorySearch(cfg);
 
     await store.execute({
-      text: '用户偏好：回复必须使用中文',
-      userId: 'railgun',
+      text: 'User preference: reply in English',
+      userId: 'user-1',
       scope: 'long-term',
       categories: ['preference'],
     });
     await store.execute({
-      text: '用户要求所有回答都使用中文进行说明',
-      userId: 'railgun',
+      text: 'User wants all answers explained in English',
+      userId: 'user-1',
       scope: 'long-term',
       categories: ['preference'],
     });
 
     const result = await hot.search({
-      query: '中文',
-      userId: 'railgun',
+      query: 'English',
+      userId: 'user-1',
       topK: 5,
       filters: { scope: 'long-term' },
     });
 
     assert.equal(result.source, 'lancedb');
     assert.ok(result.memories.length >= 2);
-    assert.equal(result.memories[0]?.user_id, 'railgun');
+    assert.equal(result.memories[0]?.user_id, 'user-1');
     assert.equal(result.memories[0]?.scope, 'long-term');
-    assert.match(result.memories.map((row) => row.text).join('\n'), /回复必须使用中文/);
-    assert.match(result.memories.map((row) => row.text).join('\n'), /所有回答都使用中文进行说明/);
+    assert.match(result.memories.map((row) => row.text).join('\n'), /reply in English/);
+    assert.match(result.memories.map((row) => row.text).join('\n'), /explained in English/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -72,20 +72,20 @@ test('hot plane hybrid search includes vector-only candidates through explicit f
 
     await store.execute({
       text: 'apple apple apple',
-      userId: 'railgun',
+      userId: 'user-1',
       scope: 'long-term',
       categories: ['keyword'],
     });
     await store.execute({
       text: 'banana banana banana',
-      userId: 'railgun',
+      userId: 'user-1',
       scope: 'long-term',
       categories: ['vector'],
     });
 
     const result = await hot.search({
       query: 'apple',
-      userId: 'railgun',
+      userId: 'user-1',
       topK: 5,
       filters: { scope: 'long-term' },
     });

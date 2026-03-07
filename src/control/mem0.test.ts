@@ -20,10 +20,10 @@ function buildConfig(): PluginConfig {
 function buildRecord(): MemoryRecord {
   return {
     memory_uid: 'm-1',
-    user_id: 'railgun',
+    user_id: 'user-1',
     run_id: null,
     scope: 'long-term',
-    text: '用户喜欢中文回复',
+    text: 'User likes replies in English',
     categories: ['preference'],
     tags: [],
     ts_event: '2026-03-07T12:00:00.000Z',
@@ -130,9 +130,9 @@ test('http mem0 client submits capture payload with messages', async () => {
   }) as unknown as typeof fetch;
   const client = new HttpMem0Client(buildConfig(), fetchStub);
   const payload = buildAutoCapturePayload({
-    userId: 'railgun',
-    latestUserMessage: '用户要求以后都用中文回复',
-    latestAssistantMessage: '好的，之后我会使用中文回复。',
+    userId: 'user-1',
+    latestUserMessage: 'Please reply in English from now on',
+    latestAssistantMessage: 'Understood. I will reply in English from now on.',
     config: {
       enabled: true,
       scope: 'long-term',
@@ -146,7 +146,7 @@ test('http mem0 client submits capture payload with messages', async () => {
 
   assert.equal(result.status, 'submitted');
   assert.match(capturedBody, /"messages"/);
-  assert.match(capturedBody, /用户要求以后都用中文回复/);
+  assert.match(capturedBody, /Please reply in English from now on/);
 });
 
 test('http mem0 client fetches extracted memories for a confirmed capture event', async () => {
@@ -162,7 +162,7 @@ test('http mem0 client fetches extracted memories for a confirmed capture event'
         items: [
           {
             id: 'mem0-captured-1',
-            memory: '用户偏好使用中文回复',
+            memory: 'User prefers replies in English',
             categories: ['preference'],
             hash: 'hash-1',
           },
@@ -172,11 +172,11 @@ test('http mem0 client fetches extracted memories for a confirmed capture event'
   }) as unknown as typeof fetch;
   const client = new HttpMem0Client(buildConfig(), fetchStub);
 
-  const memories = await client.fetchCapturedMemories({ userId: 'railgun', eventId: 'evt-capture' });
+  const memories = await client.fetchCapturedMemories({ userId: 'user-1', eventId: 'evt-capture' });
 
   assert.equal(memories.length, 1);
   assert.equal(memories[0]?.id, 'mem0-captured-1');
-  assert.equal(memories[0]?.text, '用户偏好使用中文回复');
+  assert.equal(memories[0]?.text, 'User prefers replies in English');
   assert.deepEqual(memories[0]?.categories, ['preference']);
   assert.equal(memories[0]?.hash, 'hash-1');
 });
@@ -188,7 +188,7 @@ test('http mem0 client returns empty extracted memories when response has no ite
   })) as unknown as typeof fetch;
   const client = new HttpMem0Client(buildConfig(), fetchStub);
 
-  const memories = await client.fetchCapturedMemories({ userId: 'railgun', eventId: 'evt-missing' });
+  const memories = await client.fetchCapturedMemories({ userId: 'user-1', eventId: 'evt-missing' });
 
   assert.deepEqual(memories, []);
 });
