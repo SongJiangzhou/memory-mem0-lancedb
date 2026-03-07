@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isLocalMem0BaseUrl, hasMem0Auth, buildMem0Headers } from './auth';
+import { isLocalMem0BaseUrl, hasMem0Auth, buildMem0Headers } from '../../src/control/auth';
 
 // --- isLocalMem0BaseUrl ---
 

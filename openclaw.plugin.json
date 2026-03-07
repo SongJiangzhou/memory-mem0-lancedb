@@ -4,7 +4,7 @@
   "description": "OpenClaw memory plugin using Mem0 as control plane and LanceDB as retrieval layer",
   "version": "0.1.0",
   "kind": "memory",
-  "entry": "dist/index.js",
+  "entry": "dist/src/index.js",
   "configSchema": {
     "type": "object",
     "properties": {

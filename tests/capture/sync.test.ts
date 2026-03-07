@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { FileAuditStore } from '../audit/store';
-import { InMemoryMemoryAdapter } from '../bridge/adapter';
-import type { Mem0ExtractedMemory } from '../control/mem0';
-import { syncCapturedMemories } from './sync';
+import { FileAuditStore } from '../../src/audit/store';
+import { InMemoryMemoryAdapter } from '../../src/bridge/adapter';
+import type { Mem0ExtractedMemory } from '../../src/control/mem0';
+import { syncCapturedMemories } from '../../src/capture/sync';
 
 function createExtractedMemory(overrides?: Partial<Mem0ExtractedMemory>): Mem0ExtractedMemory {
   return {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeMemoryText } from './security';
+import { sanitizeMemoryText } from '../../src/capture/security';
 
 test('sanitizeMemoryText flags restricted patterns', () => {
   const normal = sanitizeMemoryText('I like apples');

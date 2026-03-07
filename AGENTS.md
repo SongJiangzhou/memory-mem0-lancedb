@@ -13,7 +13,7 @@ npm run dev
 npm test
 
 # Run a single test file
-node --test dist/path/to/file.test.js
+node --test dist/tests/control/mem0.test.js
 
 # Install plugin locally
 npm run install-plugin
@@ -25,6 +25,9 @@ npm run install-plugin
 src/
   index.ts          # Plugin entry point - exports default register function
   types.ts          # Shared TypeScript interfaces
+  control/          # Mem0 client and auth
+    auth.ts         # Shared auth helpers (isLocalMem0BaseUrl, hasMem0Auth, buildMem0Headers)
+    mem0.ts         # HttpMem0Client / FakeMem0Client
   db/               # LanceDB table operations
     schema.ts       # Table name and row interface
     table.ts        # openMemoryTable() helper
@@ -32,7 +35,11 @@ src/
     search.ts       # MemorySearchTool class
     store.ts        # MemoryStoreTool class
     get.ts          # MemoryGetTool class
-    *.test.ts       # Test files alongside source
+tests/              # All test files (mirrors src/ structure)
+  control/          # auth.test.ts, mem0.test.ts
+  bridge/           # outbox.test.ts, poller.test.ts, sync-engine.test.ts, uid.test.ts
+  tools/            # local_fallback.test.ts, store_lancedb.test.ts, lancedb_smoke.test.ts
+  ...               # Other subdirectories mirror src/
 ***REMOVED***
 
 ## Code Style Guidelines

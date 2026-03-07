@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Mem0Poller } from './poller';
-import type { PluginConfig } from '../types';
+import { Mem0Poller } from '../../src/bridge/poller';
+import type { PluginConfig } from '../../src/types';
 
 test('Mem0Poller starts and stops without error', () => {
   const cfg: PluginConfig = {

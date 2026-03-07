@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { EMBEDDING_DIM, embedText } from './embedder';
+import { EMBEDDING_DIM, embedText } from '../../src/hot/embedder';
 
 test('embedText is stable for identical input', () => {
   const first = embedText('User preference: English replies');

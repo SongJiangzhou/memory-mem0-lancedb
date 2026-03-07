@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { FileOutbox } from './outbox';
+import { FileOutbox } from '../../src/bridge/outbox';
 
 test('outbox enqueues once for duplicate idempotency key', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'outbox-'));

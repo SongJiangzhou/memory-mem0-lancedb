@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemoryStoreTool } from './store';
-import { openMemoryTable } from '../db/table';
+import { MemoryStoreTool } from '../../src/tools/store';
+import { openMemoryTable } from '../../src/db/table';
 
 test('store writes to LanceDB and is idempotent', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ldb-store-'));

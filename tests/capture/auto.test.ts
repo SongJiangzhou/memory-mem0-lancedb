@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildAutoCapturePayload } from './auto';
-import type { AutoCaptureConfig } from '../types';
+import { buildAutoCapturePayload } from '../../src/capture/auto';
+import type { AutoCaptureConfig } from '../../src/types';
 
 function buildConfig(overrides?: Partial<AutoCaptureConfig>): AutoCaptureConfig {
   return {

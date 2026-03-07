@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { HttpMem0Client } from './mem0';
-import { buildAutoCapturePayload } from '../capture/auto';
-import type { MemoryRecord, PluginConfig } from '../types';
+import { HttpMem0Client } from '../../src/control/mem0';
+import { buildAutoCapturePayload } from '../../src/capture/auto';
+import type { MemoryRecord, PluginConfig } from '../../src/types';
 
 function buildConfig(): PluginConfig {
   return {
