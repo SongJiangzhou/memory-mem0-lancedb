@@ -165,6 +165,33 @@ else
         echo "     将跳过交互配置，请稍后手动进行配置。"
     else
         echo ""
+        echo "─── Embedding 模型配置 ─────────────────────────────────────"
+        echo ""
+        EMBED_PROVIDER=$(node -e "
+try {
+  const config = require('${OPENCLAW_CONFIG}');
+  const ms = config.agents?.defaults?.memorySearch;
+  if (ms && ms.enabled !== false && ms.provider) {
+    console.log(ms.provider);
+  } else {
+    console.log('fake');
+  }
+} catch (e) {
+  console.log('fake');
+}
+")
+        if [ "$EMBED_PROVIDER" = "fake" ]; then
+            echo -e "  \033[1;33m⚠ 警告: 在 OpenClaw 配置中未检测到外部 Embedding 模型提供商。\033[0m"
+            echo "    插件将退化使用轻量级的 \"fake\" 假向量 (基于字符编码)。"
+            echo -e "    \033[1;31m这将严重降低长期记忆的语义检索质量！\033[0m"
+            echo "    若要启用真正的语义检索，请在 openclaw.json 中配置:"
+            echo "    agents.defaults.memorySearch.provider"
+        else
+            echo "  ✓ 找到 OpenClaw 全局 Embedding 提供商: ${EMBED_PROVIDER}"
+            echo "    插件将自动复用该配置 (无需在此额外配置)"
+        fi
+
+        echo ""
         echo "─── Mem0 后端配置 ──────────────────────────────────────────"
         echo ""
         echo "请选择如何连接 Mem0 记忆引擎:"
