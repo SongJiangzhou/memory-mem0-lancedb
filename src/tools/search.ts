@@ -1,5 +1,5 @@
-import { HttpMem0Client } from '../control/mem0';
 import { HotMemorySearch } from '../hot/search';
+import { hasMem0Auth, buildMem0Headers } from '../control/auth';
 import type { PluginConfig, SearchParams, SearchResult } from '../types';
 
 export class MemorySearchTool {
@@ -23,7 +23,7 @@ export class MemorySearchTool {
       console.warn('[memorySearch] LanceDB failed, trying Mem0 fallback:', err);
     }
 
-    if (!this.config.mem0ApiKey) {
+    if (!hasMem0Auth(this.config)) {
       return { memories: [], source: 'none' };
     }
 
@@ -41,13 +41,9 @@ export class MemorySearchTool {
     topK: number,
     filters?: SearchParams['filters'],
   ): Promise<SearchResult> {
-    const client = new HttpMem0Client(this.config);
     const response = await fetch(`${this.config.mem0BaseUrl}/v1/memories/search/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Token ${this.config.mem0ApiKey}`,
-      },
+      headers: buildMem0Headers(this.config, { json: true }),
       body: JSON.stringify({ query, user_id: userId, top_k: topK, filters: filters || {} }),
     });
     if (!response.ok) {
@@ -55,7 +51,6 @@ export class MemorySearchTool {
     }
 
     const data: any = await response.json();
-    void client;
 
     return {
       memories: (data.results || []).map((row: any) => ({

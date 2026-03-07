@@ -10,6 +10,13 @@ import { runAutoRecall } from './recall/auto';
 import { Mem0Poller } from './bridge/poller';
 import type { PluginConfig } from './types';
 
+function textResult(summary: string, details: any) {
+  return {
+    content: [{ type: 'text', text: summary }],
+    details,
+  };
+}
+
 type OpenClawApi = {
   logger?: {
     info?: (msg: string) => void;
@@ -77,7 +84,7 @@ export default function register(api: OpenClawApi) {
     },
     async execute(_id: string, params: any) {
       const result = await customSearch.execute({ userId: 'railgun', ...params });
-      return { content: [{ type: 'json', json: result }] };
+      return textResult(`memory_search: source=${result.source}, hits=${result.memories.length}`, result);
     },
   });
 
@@ -95,7 +102,7 @@ export default function register(api: OpenClawApi) {
     },
     async execute(_id: string, params: any) {
       const result = await customGet.execute(params);
-      return { content: [{ type: 'json', json: result }] };
+      return textResult(`memory_get: ${result.path} lines ${result.from}-${result.from + result.lines - 1}`, result);
     },
   });
 
@@ -123,7 +130,7 @@ export default function register(api: OpenClawApi) {
       },
       async execute(_id: string, params: any) {
         const result = await customSearch.execute(params);
-        return { content: [{ type: 'json', json: result }] };
+        return textResult(`memorySearch: source=${result.source}, hits=${result.memories.length}`, result);
       },
     },
   );
@@ -146,7 +153,7 @@ export default function register(api: OpenClawApi) {
       },
       async execute(_id: string, params: any) {
         const result = await customStore.execute(params);
-        return { content: [{ type: 'json', json: result }] };
+        return textResult(`memoryStore: success=${Boolean(result.success)}, uid=${result.memoryUid || 'n/a'}`, result);
       },
     },
   );
