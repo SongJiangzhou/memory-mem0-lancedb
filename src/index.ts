@@ -30,7 +30,7 @@ function resolveConfig(raw?: Partial<PluginConfig>): PluginConfig {
     outboxDbPath: raw?.outboxDbPath || '~/.openclaw/workspace/data/outbox.json',
     auditStorePath: raw?.auditStorePath || '~/.openclaw/workspace/data/memory_audit/memory_records.jsonl',
     autoRecall: {
-      enabled: raw?.autoRecall?.enabled || false,
+      enabled: raw?.autoRecall?.enabled ?? true,
       topK: raw?.autoRecall?.topK || 5,
       maxChars: raw?.autoRecall?.maxChars || 800,
       scope: raw?.autoRecall?.scope || 'all',
