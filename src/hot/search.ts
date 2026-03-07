@@ -1,5 +1,6 @@
 import { embedText } from './embedder';
 import { openMemoryTable } from '../db/table';
+import { getMemoryTableName } from '../db/schema';
 import type { PluginConfig, SearchParams, SearchResult } from '../types';
 
 const RRF_K = 60;
@@ -15,7 +16,8 @@ export class HotMemorySearch {
 
   async search(params: SearchParams): Promise<SearchResult> {
     const { query, userId, topK = 5, filters } = params;
-    const tbl = await openMemoryTable(this.config.lancedbPath);
+    const dim = this.config.embedding?.dimension || 16;
+    const tbl = await openMemoryTable(this.config.lancedbPath, dim);
     const whereClause = this.buildWhereClause(userId, filters);
     
     // We fetch more for MMR pool
@@ -32,11 +34,11 @@ export class HotMemorySearch {
     }
 
     if (rows.length > 0) {
-      const queryVector = embedText(query);
+      const queryVector = await embedText(query, this.config.embedding);
       const ranked = this.applyTimeDecay(rows);
       const deduplicated = this.applyMmr(ranked, queryVector, topK);
       return {
-        memories: deduplicated.map((row) => this.toMemoryRecord(row)),
+        memories: deduplicated.map((row) => this.toMemoryRecord(row, dim)),
         source: 'lancedb',
       };
     }
@@ -72,7 +74,7 @@ export class HotMemorySearch {
 
   private async searchVector(tbl: Awaited<ReturnType<typeof openMemoryTable>>, query: string, whereClause: string, topK: number): Promise<any[]> {
     try {
-      const queryVector = embedText(query);
+      const queryVector = await embedText(query, this.config.embedding);
       return await (tbl as any)
         .search(queryVector)
         .where(whereClause)
@@ -201,7 +203,7 @@ export class HotMemorySearch {
     return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
   }
 
-  private toMemoryRecord(row: any) {
+  private toMemoryRecord(row: any, dim: number) {
     return {
       memory_uid: row.memory_uid,
       user_id: row.user_id,
@@ -221,7 +223,7 @@ export class HotMemorySearch {
         hash: row.mem0_hash || null,
       },
       lancedb: {
-        table: 'memory_records',
+        table: getMemoryTableName(dim),
         row_key: row.lancedb_row_key || row.memory_uid,
         vector_dim: Array.isArray(row.vector) ? row.vector.length : null,
         index_version: 'rrf-v1',

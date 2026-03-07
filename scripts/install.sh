@@ -165,6 +165,32 @@ else
         echo "     Skipping configuration. Please configure manually."
     else
         echo ""
+        echo "─── Embedding Setup ────────────────────────────────────────"
+        echo ""
+        EMBED_PROVIDER=$(node -e "
+try {
+  const config = require('${OPENCLAW_CONFIG}');
+  const ms = config.agents?.defaults?.memorySearch;
+  if (ms && ms.enabled !== false && ms.provider) {
+    console.log(ms.provider);
+  } else {
+    console.log('fake');
+  }
+} catch (e) {
+  console.log('fake');
+}
+")
+        if [ "$EMBED_PROVIDER" = "fake" ]; then
+            echo "  ⚠ No external embedding provider detected in OpenClaw config."
+            echo "    The plugin will fall back to using a lightweight \"fake\" char-code embedding."
+            echo "    To use proper semantic search, configure it in openclaw.json under:"
+            echo "    agents.defaults.memorySearch.provider"
+        else
+            echo "  ✓ Found OpenClaw embedding provider: ${EMBED_PROVIDER}"
+            echo "    The plugin will automatically reuse this provider (No extra configuration needed)."
+        fi
+
+        echo ""
         echo "─── Mem0 Backend ───────────────────────────────────────────"
         echo ""
         echo "Choose how to connect to Mem0:"

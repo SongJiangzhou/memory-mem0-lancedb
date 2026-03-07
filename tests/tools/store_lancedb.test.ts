@@ -19,6 +19,7 @@ test('store writes to LanceDB and is idempotent', async () => {
       auditStorePath,
       autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
       autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
     };
     const store = new MemoryStoreTool(cfg);
 

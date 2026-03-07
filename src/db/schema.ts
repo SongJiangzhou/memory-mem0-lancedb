@@ -1,4 +1,6 @@
-export const MEMORY_TABLE = 'memory_records';
+export function getMemoryTableName(dim: number): string {
+  return dim === 16 ? 'memory_records' : `memory_records_d${dim}`;
+}
 
 export interface MemoryRow {
   memory_uid: string;

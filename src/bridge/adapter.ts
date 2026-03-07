@@ -1,7 +1,7 @@
 import { openMemoryTable } from '../db/table';
 import type { MemoryRow } from '../db/schema';
 import { embedText } from '../hot/embedder';
-import type { MemorySyncPayload } from '../types';
+import type { MemorySyncPayload, EmbeddingConfig } from '../types';
 
 export interface MemoryAdapterRecord {
   memory_uid: string;
@@ -36,14 +36,17 @@ export class InMemoryMemoryAdapter implements MemoryAdapter {
 
 export class LanceDbMemoryAdapter implements MemoryAdapter {
   private readonly lancedbPath: string;
+  private readonly config?: EmbeddingConfig;
 
-  constructor(lancedbPath: string) {
+  constructor(lancedbPath: string, config?: EmbeddingConfig) {
     this.lancedbPath = lancedbPath;
+    this.config = config;
   }
 
   async upsertMemory(record: MemoryAdapterRecord): Promise<void> {
-    const table = await openMemoryTable(this.lancedbPath);
-    const row = toLanceRow(record);
+    const dim = this.config?.dimension || 16;
+    const table = await openMemoryTable(this.lancedbPath, dim);
+    const row = await toLanceRow(record, this.config);
     
     await table.mergeInsert('memory_uid')
       .whenMatchedUpdateAll()
@@ -52,13 +55,14 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
   }
 
   async exists(memoryUid: string): Promise<boolean> {
-    const table = await openMemoryTable(this.lancedbPath);
+    const dim = this.config?.dimension || 16;
+    const table = await openMemoryTable(this.lancedbPath, dim);
     const rows = await table.query().where(`memory_uid = '${memoryUid}'`).limit(1).toArray();
     return rows.length > 0;
   }
 }
 
-function toLanceRow(record: MemoryAdapterRecord): MemoryRow {
+async function toLanceRow(record: MemoryAdapterRecord, config?: EmbeddingConfig): Promise<MemoryRow> {
   const memory = record.memory;
 
   return {
@@ -78,6 +82,6 @@ function toLanceRow(record: MemoryAdapterRecord): MemoryRow {
     mem0_event_id: memory.mem0?.event_id || '',
     mem0_hash: memory.mem0?.hash || '',
     lancedb_row_key: record.memory_uid,
-    vector: embedText(memory.text),
+    vector: await embedText(memory.text, config),
   };
 }

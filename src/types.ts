@@ -44,6 +44,15 @@ export interface PluginConfig {
   auditStorePath: string;
   autoRecall: AutoRecallConfig;
   autoCapture: AutoCaptureConfig;
+  embedding: EmbeddingConfig;
+}
+
+export interface EmbeddingConfig {
+  provider: 'openai' | 'gemini' | 'ollama' | 'fake';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  dimension: number;
 }
 
 export interface AutoRecallConfig {

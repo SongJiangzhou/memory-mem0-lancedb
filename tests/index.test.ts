@@ -44,6 +44,7 @@ test('register installs auto-capture hook when enabled and hook api exists', asy
   register({
     pluginConfig: {
       autoCapture: {
+  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
         enabled: true,
         scope: 'long-term',
         requireAssistantReply: true,
@@ -109,6 +110,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
         mem0BaseUrl: 'https://api.mem0.ai',
         mem0ApiKey: 'test-key',
         autoCapture: {
+  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
           enabled: true,
           scope: 'long-term',
           requireAssistantReply: true,

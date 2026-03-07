@@ -49,7 +49,7 @@ export class Mem0Poller {
       const data: any = await response.json();
       const memories = Array.isArray(data) ? data : Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
       
-      const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath);
+      const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath, this.config.embedding);
 
       for (const mem of memories) {
         const memoryUid = mem.metadata?.memory_uid || mem.id;
