@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { MemoryStoreTool } from './store';
-import { MemorySearchTool } from './search';
+import { MemoryStoreTool } from '../../src/tools/store';
+import { MemorySearchTool } from '../../src/tools/search';
 
 test('store/search works with local fallback when mem0ApiKey is missing', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mem0-lancedb-test-'));

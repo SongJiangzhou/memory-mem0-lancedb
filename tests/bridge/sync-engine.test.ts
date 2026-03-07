@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { FileAuditStore } from '../audit/store';
-import { FakeMem0Client } from '../control/mem0';
-import { FileOutbox } from './outbox';
-import { InMemoryMemoryAdapter } from './adapter';
-import { MemorySyncEngine } from './sync-engine';
+import { FileAuditStore } from '../../src/audit/store';
+import { FakeMem0Client } from '../../src/control/mem0';
+import { FileOutbox } from '../../src/bridge/outbox';
+import { InMemoryMemoryAdapter } from '../../src/bridge/adapter';
+import { MemorySyncEngine } from '../../src/bridge/sync-engine';
 
 function createMemory() {
   return {

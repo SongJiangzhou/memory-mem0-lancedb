@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { FileAuditStore } from './store';
-import type { MemoryRecord } from '../types';
+import { FileAuditStore } from '../../src/audit/store';
+import type { MemoryRecord } from '../../src/types';
 
 function buildRecord(): MemoryRecord {
   return {

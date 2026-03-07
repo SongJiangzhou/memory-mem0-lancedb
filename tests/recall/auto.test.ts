@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildAutoRecallBlock, runAutoRecall } from './auto';
-import type { AutoRecallConfig, MemoryRecord } from '../types';
+import { buildAutoRecallBlock, runAutoRecall } from '../../src/recall/auto';
+import type { AutoRecallConfig, MemoryRecord } from '../../src/types';
 
 function buildMemory(text: string, scope: 'long-term' | 'session' = 'long-term'): MemoryRecord {
   return {

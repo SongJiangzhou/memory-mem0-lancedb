@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildMemoryUid, normalizeText } from './uid';
+import { buildMemoryUid, normalizeText } from '../../src/bridge/uid';
 
 test('normalizeText trims lowercases and collapses whitespace', () => {
   assert.equal(normalizeText('  Hello   WORLD  '), 'hello world');

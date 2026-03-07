@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { MemoryStoreTool } from '../tools/store';
-import { HotMemorySearch } from './search';
+import { MemoryStoreTool } from '../../src/tools/store';
+import { HotMemorySearch } from '../../src/hot/search';
 
 test('hot plane search returns canonical memory rows with filters', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));

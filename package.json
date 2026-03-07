@@ -2,11 +2,11 @@
   "name": "openclaw-mem0-lancedb",
   "version": "0.1.0",
   "description": "OpenClaw memory plugin with Mem0 + LanceDB",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node --test dist/**/*.test.js",
+    "test": "node --test dist/tests/**/*.test.js",
     "install-plugin": "bash scripts/install.sh"
   },
   "dependencies": {
@@ -18,7 +18,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./dist/index.js"
+      "./dist/src/index.js"
     ]
   }
 }

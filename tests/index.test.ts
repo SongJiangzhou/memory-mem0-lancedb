@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { FileAuditStore } from './audit/store';
-import register from './index';
+import { FileAuditStore } from '../src/audit/store';
+import register from '../src/index';
 
 test('register installs auto-recall hook when enabled and hook api exists', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];

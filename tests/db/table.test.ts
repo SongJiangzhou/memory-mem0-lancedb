@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openMemoryTable } from './table';
+import { openMemoryTable } from '../../src/db/table';
 
 test('openMemoryTable creates table with correct schema and indices', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ldb-table-'));
