@@ -1,6 +1,6 @@
 # Mem0 + LanceDB 插件实现差距与深度检视报告
 
-基于设计文档 `docs/openclaw_use_mem0_and_lanceDB.md` 的架构设计与核心要求，对当前 `memory-mem0-lancedb` 插件代码进行了全面的源码级检视。当前实现已经搭建起了基本的双写架构和数据流（Audit Plane -> Outbox -> LanceDB / Mem0），但距离设计文档中描述的生产级、低延迟、高可用的检索与治理标准，存在较为显著的差距。
+基于设计文档 `docs/openclaw_use_mem0_and_lanceDB.md` 的架构设计与核心要求，对当前 `openclaw-mem0-lancedb` 插件代码进行了全面的源码级检视。当前实现已经搭建起了基本的双写架构和数据流（Audit Plane -> Outbox -> LanceDB / Mem0），但距离设计文档中描述的生产级、低延迟、高可用的检索与治理标准，存在较为显著的差距。
 
 以下是详细的代码实现差距分析与改进建议：
 

@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 在当前 `memory-mem0-lancedb` 插件内实现 file-first audit plane、Mem0 control plane、LanceDB hot plane 的嵌入式长期记忆架构。
+**Goal:** 在当前 `openclaw-mem0-lancedb` 插件内实现 file-first audit plane、Mem0 control plane、LanceDB hot plane 的嵌入式长期记忆架构。
 
 **Architecture:** 保持单插件对外形态不变，在 `src/` 内拆分 `audit`、`control`、`hot`、`bridge` 四层。写入先落审计面，再经 outbox/sync engine 同步到 Mem0 和 LanceDB；检索默认由 LanceDB 承担，Mem0 作为补充与兜底。
 

@@ -1,7 +1,7 @@
 # 差距修复与全面重构设计文档 (Implementation Gap Fixing Design)
 
 ## 概述
-基于 `docs/implementation_gap_analysis.md` 中识别出的差距，并对齐最初的设计文档 `docs/openclaw_use_mem0_and_lanceDB.md`，本设计阐述了将当前 `memory-mem0-lancedb` 插件改造为生产级、低延迟、高可用的存储与检索系统的技术路线。
+基于 `docs/implementation_gap_analysis.md` 中识别出的差距，并对齐最初的设计文档 `docs/openclaw_use_mem0_and_lanceDB.md`，本设计阐述了将当前 `openclaw-mem0-lancedb` 插件改造为生产级、低延迟、高可用的存储与检索系统的技术路线。
 
 ## 1. Hot Plane 原生混合检索与索引重建 (LanceDB)
 - **原生混合检索**：废弃 `src/hot/search.ts` 中的纯内存 JS 余弦相似度计算与手动 RRF 融合。改为直接调用 LanceDB Node.js SDK 的原生向量查询 `tbl.search(queryVector)`，并通过原生的 `limit(K)` 进行近似最近邻查询，充分利用底层 C++ 层的查询与融合性能。

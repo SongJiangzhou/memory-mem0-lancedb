@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 为当前 `memory-mem0-lancedb` 插件的 `hot plane` 增加 deterministic embedding、vector 检索、hybrid 检索和显式 RRF 融合。
+**Goal:** 为当前 `openclaw-mem0-lancedb` 插件的 `hot plane` 增加 deterministic embedding、vector 检索、hybrid 检索和显式 RRF 融合。
 
 **Architecture:** 保持现有 file-first 三平面架构不变，仅增强 `hot plane`。写入 LanceDB 时增加 `vector` 列，查询时同时执行 FTS 与 vector 两路检索，再在 `src/hot/search.ts` 中做显式 RRF 融合。
 

@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 为 `memory-mem0-lancedb` 插件增加“配置开启时生效”的 auto-capture，默认提交最新一轮 `user + assistant` 到 Mem0，并做幂等与事件确认。
+**Goal:** 为 `openclaw-mem0-lancedb` 插件增加“配置开启时生效”的 auto-capture，默认提交最新一轮 `user + assistant` 到 Mem0，并做幂等与事件确认。
 
 **Architecture:** 保持现有 file-first 三平面架构不变，新增 `src/capture/auto.ts` 作为 capture 编排层。插件在兼容的回合结束 hook 上触发 auto-capture；抽取由 Mem0 负责，插件只做消息打包、幂等和确认。
 
