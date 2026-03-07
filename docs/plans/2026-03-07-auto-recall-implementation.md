@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 为 `memory-mem0-lancedb` 插件增加“配置开启时自动注入”的 auto-recall 能力，复用当前 `hot plane` 检索结果生成上下文注入块。
+**Goal:** 为 `openclaw-mem0-lancedb` 插件增加“配置开启时自动注入”的 auto-recall 能力，复用当前 `hot plane` 检索结果生成上下文注入块。
 
 **Architecture:** 保持现有工具和三平面结构不变，新增 `src/recall/auto.ts` 作为 recall pipeline 和 formatter。插件注册时探测可用的生命周期 hook，若配置开启则接入自动 recall，否则保持静默。
 

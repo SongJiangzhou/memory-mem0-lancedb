@@ -142,7 +142,7 @@ OpenClaw Markdown继续承担“人类可读真相与人工修正面（audit pla
 ```mermaid
 flowchart LR
   subgraph OC[OpenClaw Gateway]
-    A[Agent Runtime] --> H1[Memory Plugin: memory-mem0-lancedb]
+    A[Agent Runtime] --> H1[Memory Plugin: openclaw-mem0-lancedb]
   end
 
   subgraph MS[Memory Service]
@@ -288,7 +288,7 @@ Capture请求Schema（简化版）：
 ```mermaid
 flowchart TB
   subgraph OC[OpenClaw Gateway]
-    A[Agent Runtime] --> MP[Memory Plugin: memory-mem0-lancedb]
+    A[Agent Runtime] --> MP[Memory Plugin: openclaw-mem0-lancedb]
     MP --> LDB[(Embedded LanceDB: local path or s3://...)]
     MP --> MD[(OpenClaw Markdown Memory Files)]
     MP --> Q[(Local Outbox: sqlite/rocksdb)]
@@ -365,7 +365,7 @@ flowchart TB
 | 阶段 | 目标交付物 | 关键任务（可执行） | 人力/时间（典型小团队） |
 |---|---|---|---|
 | 需求与策略定型 | 需求文档、数据分级与写入策略、SLO草案（延迟/可见性**未指定**） | 定义MemoryRecord与`memory_uid`；确定敏感分级与“本地化策略”（未指定则默认四级）；确定写入/更新/删除语义与回滚策略 | 1–2周 / 2–3人 |
-| 原型实现 | 可运行的`memory-mem0-lancedb`插件 + 最小LanceDB表 | 选定LanceDB版本（建议>=0.29.2并固定，见工具建议）；实现capture/recall；实现merge_insert幂等；实现where过滤与FTS/混合检索 | 2–3周 / 2–3人 citeturn11search12turn5search28turn1search8turn5search1 |
+| 原型实现 | 可运行的`openclaw-mem0-lancedb`插件 + 最小LanceDB表 | 选定LanceDB版本（建议>=0.29.2并固定，见工具建议）；实现capture/recall；实现merge_insert幂等；实现where过滤与FTS/混合检索 | 2–3周 / 2–3人 citeturn11search12turn5search28turn1search8turn5search1 |
 | 一致性与可见性闭环 | outbox + webhook/events闭环；可见性指标 | 接入Mem0 webhooks或轮询Get Event；实现“写后读确认”；失败重试与死信队列；删除/更新同步 | 1–2周 / 2人 citeturn1search6turn10search2turn10search11turn5search6 |
 | 测试与调优 | 基准报告、参数推荐 | 离线评测（LoCoMo+合成数据）；扫索引参数（num_partitions/nprobes等）；调RRF/MMR与阈值；压测p95与吞吐 | 1–2周 / 2–3人 citeturn8search2turn2search22turn7search0turn1search8 |
 | 部署与灰度 | Kubernetes/VM部署清单（环境**未指定**）、回滚与监控 | 若使用Mem0 OSS REST，补齐Auth/TLS；接入OTel+Prometheus指标；K8s滚更与回滚流程；A/B灰度开关 | 1–2周 / 2人 citeturn10search17turn9search2turn12search7turn12search4 |

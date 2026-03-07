@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-07
 
-**Goal:** 在 `memory-mem0-lancedb` 插件中增加“配置开启时自动注入”形式的 auto-recall，基于当前稳定的 `hot plane` 检索结果在会话开始前向模型上下文注入相关记忆。
+**Goal:** 在 `openclaw-mem0-lancedb` 插件中增加“配置开启时自动注入”形式的 auto-recall，基于当前稳定的 `hot plane` 检索结果在会话开始前向模型上下文注入相关记忆。
 
 ## Scope
 

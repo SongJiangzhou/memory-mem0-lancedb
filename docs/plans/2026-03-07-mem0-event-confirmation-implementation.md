@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 为 `memory-mem0-lancedb` 插件增加 Mem0 事件提交与短轮询确认，使 `syncStatus` 反映真实确认结果。
+**Goal:** 为 `openclaw-mem0-lancedb` 插件增加 Mem0 事件提交与短轮询确认，使 `syncStatus` 反映真实确认结果。
 
 **Architecture:** 保持当前 file-first 三平面架构不变，仅增强 `control plane` 和 `sync engine`。写入时先落 audit，再提交 Mem0 并短轮询确认，最后结合 LanceDB 可见性返回 `synced` / `partial` / `failed` / `duplicate`。
 

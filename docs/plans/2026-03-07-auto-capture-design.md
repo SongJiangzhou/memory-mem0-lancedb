@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-07
 
-**Goal:** 在 `memory-mem0-lancedb` 插件中增加“配置开启时生效”的 auto-capture，默认捕获最新一轮 `user + assistant` 消息，并让 `Mem0` 负责事实抽取。
+**Goal:** 在 `openclaw-mem0-lancedb` 插件中增加“配置开启时生效”的 auto-capture，默认捕获最新一轮 `user + assistant` 消息，并让 `Mem0` 负责事实抽取。
 
 ## Scope
 
