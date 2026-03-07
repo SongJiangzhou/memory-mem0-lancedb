@@ -6,8 +6,8 @@ export interface MemoryRow {
   run_id: string;
   scope: string;
   text: string;
-  categories: string;    // JSON array string
-  tags: string;          // JSON array string
+  categories: string[];    // Array of strings
+  tags: string[];          // Array of strings
   ts_event: string;      // ISO datetime
   source: string;
   status: string;        // active | superseded | deleted

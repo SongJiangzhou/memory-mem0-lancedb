@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 
 import type { AutoCaptureConfig } from '../types';
+import { sanitizeMemoryText } from './security';
 
 export type AutoCapturePayload = {
   userId: string;
@@ -17,11 +18,14 @@ export function buildAutoCapturePayload(params: {
   latestAssistantMessage?: string;
   config: AutoCaptureConfig;
 }): AutoCapturePayload | null {
-  const userMessage = truncate(params.latestUserMessage || '', params.config.maxCharsPerMessage);
-  const assistantMessage = truncate(params.latestAssistantMessage || '', params.config.maxCharsPerMessage);
+  const rawUserMessage = truncate(params.latestUserMessage || '', params.config.maxCharsPerMessage);
+  const rawAssistantMessage = truncate(params.latestAssistantMessage || '', params.config.maxCharsPerMessage);
+  
+  const { cleanText: userMessage, isRestricted: userRestricted } = sanitizeMemoryText(rawUserMessage);
+  const { cleanText: assistantMessage, isRestricted: assistantRestricted } = sanitizeMemoryText(rawAssistantMessage);
 
-  if (!userMessage) {
-    return null;
+  if (!userMessage || userRestricted || assistantRestricted) {
+    return null; // Reject capture if restricted content is present
   }
 
   if (params.config.requireAssistantReply && !assistantMessage) {
