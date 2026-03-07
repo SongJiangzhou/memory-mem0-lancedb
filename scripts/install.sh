@@ -181,8 +181,9 @@ try {
 }
 ")
         if [ "$EMBED_PROVIDER" = "fake" ]; then
-            echo "  ⚠ No external embedding provider detected in OpenClaw config."
+            echo -e "  \033[1;33m⚠ WARNING: No external embedding provider detected in OpenClaw config.\033[0m"
             echo "    The plugin will fall back to using a lightweight \"fake\" char-code embedding."
+            echo -e "    \033[1;31mTHIS WILL SEVERELY DEGRADE LONG-TERM MEMORY SEMANTIC SEARCH QUALITY!\033[0m"
             echo "    To use proper semantic search, configure it in openclaw.json under:"
             echo "    agents.defaults.memorySearch.provider"
         else
