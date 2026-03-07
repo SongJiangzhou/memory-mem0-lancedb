@@ -12,7 +12,7 @@ import { syncCapturedMemories } from './sync';
 function createExtractedMemory(overrides?: Partial<Mem0ExtractedMemory>): Mem0ExtractedMemory {
   return {
     id: 'mem0-captured-1',
-    text: '用户偏好使用中文回复',
+    text: 'User prefers replies in English',
     categories: ['preference'],
     hash: 'hash-1',
     ...overrides,
@@ -28,7 +28,7 @@ test('capture sync maps extracted memories into local audit store and hot plane'
 
     const result = await syncCapturedMemories({
       memories: [createExtractedMemory()],
-      userId: 'railgun',
+      userId: 'user-1',
       runId: 'run-1',
       scope: 'long-term',
       eventId: 'evt-capture',
@@ -42,7 +42,7 @@ test('capture sync maps extracted memories into local audit store and hot plane'
 
     const records = await auditStore.readAll();
     assert.equal(records.length, 1);
-    assert.equal(records[0]?.text, '用户偏好使用中文回复');
+    assert.equal(records[0]?.text, 'User prefers replies in English');
     assert.equal(records[0]?.mem0?.mem0_id, 'mem0-captured-1');
     assert.equal(records[0]?.mem0?.event_id, 'evt-capture');
     assert.equal(records[0]?.openclaw_refs?.file_path, 'AUTO_CAPTURE');
@@ -63,7 +63,7 @@ test('capture sync skips duplicate extracted memories by memory uid', async () =
 
     const first = await syncCapturedMemories({
       memories: [createExtractedMemory()],
-      userId: 'railgun',
+      userId: 'user-1',
       runId: 'run-1',
       scope: 'long-term',
       eventId: 'evt-capture',
@@ -73,7 +73,7 @@ test('capture sync skips duplicate extracted memories by memory uid', async () =
     });
     const second = await syncCapturedMemories({
       memories: [createExtractedMemory()],
-      userId: 'railgun',
+      userId: 'user-1',
       runId: 'run-1',
       scope: 'long-term',
       eventId: 'evt-capture',

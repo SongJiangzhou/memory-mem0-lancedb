@@ -7,7 +7,7 @@ import type { AutoRecallConfig, MemoryRecord } from '../types';
 function buildMemory(text: string, scope: 'long-term' | 'session' = 'long-term'): MemoryRecord {
   return {
     memory_uid: `m-${text}`,
-    user_id: 'railgun',
+    user_id: 'user-1',
     run_id: null,
     scope,
     text,
@@ -27,7 +27,7 @@ function buildConfig(overrides?: Partial<AutoRecallConfig>): AutoRecallConfig {
   return {
     enabled: true,
     topK: 2,
-    maxChars: 120,
+    maxChars: 200,
     scope: 'all',
     ...overrides,
   };
@@ -35,40 +35,40 @@ function buildConfig(overrides?: Partial<AutoRecallConfig>): AutoRecallConfig {
 
 test('buildAutoRecallBlock formats stable relevant_memories block', () => {
   const block = buildAutoRecallBlock(
-    [buildMemory('用户偏好：回复必须使用中文'), buildMemory('用户喜欢科幻电影')],
+    [buildMemory('User preference: reply in English'), buildMemory('User likes sci-fi movies')],
     buildConfig(),
   );
 
   assert.match(block, /<relevant_memories>/);
-  assert.match(block, /回复必须使用中文/);
-  assert.match(block, /用户喜欢科幻电影/);
+  assert.match(block, /reply in English/);
+  assert.match(block, /User likes sci-fi movies/);
   assert.match(block, /<\/relevant_memories>/);
 });
 
 test('runAutoRecall applies topK and maxChars constraints', async () => {
   const result = await runAutoRecall({
-    query: '中文',
-    userId: 'railgun',
+    query: 'English',
+    userId: 'user-1',
     config: buildConfig({ topK: 1, maxChars: 60 }),
     search: async () => ({
       memories: [
-        buildMemory('用户偏好：回复必须使用中文'),
-        buildMemory('用户喜欢科幻电影'),
+        buildMemory('User preference: reply in English'),
+        buildMemory('User likes sci-fi movies'),
       ],
       source: 'lancedb',
     }),
   });
 
   assert.ok(result);
-  assert.match(result || '', /回复必须使用中文/);
-  assert.doesNotMatch(result || '', /用户喜欢科幻电影/);
+  assert.match(result || '', /User preference/);
+  assert.doesNotMatch(result || '', /User likes sci-fi movies/);
   assert.ok((result || '').length <= 60);
 });
 
 test('runAutoRecall returns empty string when search result is empty', async () => {
   const result = await runAutoRecall({
-    query: '中文',
-    userId: 'railgun',
+    query: 'English',
+    userId: 'user-1',
     config: buildConfig(),
     search: async () => ({ memories: [], source: 'none' }),
   });

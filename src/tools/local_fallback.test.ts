@@ -25,8 +25,8 @@ test('store/search works with local fallback when mem0ApiKey is missing', async 
     const search = new MemorySearchTool(cfg);
 
     const write = await store.execute({
-      text: '用户偏好：回复必须使用中文',
-      userId: 'railgun',
+      text: 'User preference: reply in English',
+      userId: 'user-1',
       scope: 'long-term',
       categories: ['preference'],
     });
@@ -35,15 +35,15 @@ test('store/search works with local fallback when mem0ApiKey is missing', async 
     assert.equal(write.syncStatus, 'partial');
 
     const result = await search.execute({
-      query: '回复必须使用中文',
-      userId: 'railgun',
+      query: 'reply in English',
+      userId: 'user-1',
       topK: 3,
     });
 
     assert.equal(result.source, 'lancedb');
     assert.ok(result.memories.length >= 1);
-    assert.match(result.memories[0].text, /回复必须使用中文/);
-    assert.match(readFileSync(auditStorePath, 'utf-8'), /回复必须使用中文/);
+    assert.match(result.memories[0].text, /reply in English/);
+    assert.match(readFileSync(auditStorePath, 'utf-8'), /reply in English/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

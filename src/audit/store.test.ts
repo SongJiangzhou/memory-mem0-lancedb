@@ -10,10 +10,10 @@ import type { MemoryRecord } from '../types';
 function buildRecord(): MemoryRecord {
   return {
     memory_uid: 'm-1',
-    user_id: 'railgun',
+    user_id: 'user-1',
     run_id: null,
     scope: 'long-term',
-    text: '用户偏好：回复必须使用中文',
+    text: 'User preference: reply in English',
     categories: ['preference'],
     tags: ['lang'],
     ts_event: '2026-03-07T12:00:00.000Z',
