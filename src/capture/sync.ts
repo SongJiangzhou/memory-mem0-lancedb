@@ -12,7 +12,7 @@ export async function syncCapturedMemories(params: {
   userId: string;
   runId?: string | null;
   scope: 'long-term' | 'session';
-  eventId: string;
+  eventId: string | null;
   auditStore: FileAuditStore;
   adapter: MemoryAdapter;
   tsEvent?: string;
@@ -62,7 +62,7 @@ function toMemoryPayload(
     userId: string;
     runId?: string | null;
     scope: 'long-term' | 'session';
-    eventId: string;
+    eventId: string | null;
   },
   tsEvent: string,
 ): MemorySyncPayload {

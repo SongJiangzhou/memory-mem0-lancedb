@@ -276,7 +276,7 @@ export default function register(api: OpenClawApi) {
         const syncedAttr = captureNotification.syncedToLancedb ? ' synced="lancedb"' : '';
         const lines = captureNotification.memories.map((m: string) => `- ${m}`).join('\n');
         parts.push(
-          `<memory_capture_result via="${captureNotification.via}" count="${captureNotification.count}"${syncedAttr}>\n${lines}\n</memory_capture_result>`,
+          `<capture via="${captureNotification.via}" count="${captureNotification.count}"${syncedAttr}>\n${lines}\n</capture>`,
         );
       }
 
@@ -328,41 +328,74 @@ export default function register(api: OpenClawApi) {
       });
       const mem0Client = new HttpMem0Client(cfg, fetch, debug);
       const submitted = await mem0Client.captureTurn(payload);
-      if (submitted.status === 'submitted' && submitted.event_id) {
-        const confirmation = await mem0Client.waitForEvent(submitted.event_id, { attempts: 2, delayMs: 0 });
-        if (confirmation.status === 'confirmed') {
-          const extractedMemories = await mem0Client.fetchCapturedMemories({
-            userId: payload.userId,
-            eventId: submitted.event_id,
-          });
+
+      if (submitted.status === 'submitted') {
+        // Path A: Mem0 returned extracted memories directly in the response array
+        if (submitted.extractedMemories && submitted.extractedMemories.length > 0) {
           const synced = await syncCapturedMemories({
-            memories: extractedMemories,
+            memories: submitted.extractedMemories,
             userId: payload.userId,
             runId: payload.runId,
             scope: payload.scope,
-            eventId: submitted.event_id,
+            eventId: null,
             auditStore: new FileAuditStore(cfg.auditStorePath),
             adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
             debug,
           });
           debug.basic('auto_capture.done', {
-            eventId: submitted.event_id,
-            extractedCount: extractedMemories.length,
+            mode: 'direct',
+            extractedCount: submitted.extractedMemories.length,
             synced: synced.synced,
           });
-          if (sessionKey && extractedMemories.length > 0) {
+          if (sessionKey) {
             writePendingCapture(sessionKey, {
-              memories: extractedMemories.map((m: any) => m.memory || m.text || String(m)),
+              memories: submitted.extractedMemories.map((m: any) => m.text || String(m)),
               via: 'mem0',
               syncedToLancedb: synced.synced > 0,
-              count: extractedMemories.length,
+              count: submitted.extractedMemories.length,
             });
           }
-          return { submitted, confirmation, synced };
+          return { submitted, synced };
         }
 
-        debug.basic('auto_capture.unconfirmed', { eventId: submitted.event_id, status: confirmation.status });
-        return { submitted, confirmation };
+        // Path B: Mem0 returned an event_id for async confirmation
+        if (submitted.event_id) {
+          const confirmation = await mem0Client.waitForEvent(submitted.event_id, { attempts: 5, delayMs: 400 });
+          if (confirmation.status === 'confirmed') {
+            const extractedMemories = await mem0Client.fetchCapturedMemories({
+              userId: payload.userId,
+              eventId: submitted.event_id,
+            });
+            const synced = await syncCapturedMemories({
+              memories: extractedMemories,
+              userId: payload.userId,
+              runId: payload.runId,
+              scope: payload.scope,
+              eventId: submitted.event_id,
+              auditStore: new FileAuditStore(cfg.auditStorePath),
+              adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
+              debug,
+            });
+            debug.basic('auto_capture.done', {
+              mode: 'event',
+              eventId: submitted.event_id,
+              extractedCount: extractedMemories.length,
+              synced: synced.synced,
+            });
+            if (sessionKey && extractedMemories.length > 0) {
+              writePendingCapture(sessionKey, {
+                memories: extractedMemories.map((m: any) => m.text || String(m)),
+                via: 'mem0',
+                syncedToLancedb: synced.synced > 0,
+                count: extractedMemories.length,
+              });
+            }
+            return { submitted, confirmation, synced };
+          }
+
+          debug.basic('auto_capture.unconfirmed', { eventId: submitted.event_id, status: confirmation.status });
+          return { submitted, confirmation };
+        }
       }
 
       debug.basic('auto_capture.unavailable', { status: submitted.status });
@@ -425,7 +458,9 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
  * from poisoning the sanitizer and causing legitimate turns to be dropped.
  */
 function stripInjectedBlocks(text: string): string {
-  return text.replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, '');
+  return text
+    .replace(/<recall[^>]*>[\s\S]*?<\/recall>/g, '')
+    .replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, ''); // legacy
 }
 
 function extractTextContent(content: unknown): string {

@@ -277,10 +277,10 @@ test('auto-capture hook strips injected recall blocks before sanitization', asyn
   const hook = hooks.find((entry) => entry.name === 'agent_end');
   assert.ok(hook);
 
-  // User message contains an injected <relevant_memories> block with "password" keyword.
+  // User message contains an injected <recall> block with "password" keyword.
   // The actual user turn is clean, so capture should proceed.
   const userMsgWithInjection =
-    '<relevant_memories>\n- User wants to remember the test password abc123\n</relevant_memories>\nPlease reply in English from now on';
+    '<recall>\n- User wants to remember the test password abc123\n</recall>\nPlease reply in English from now on';
 
   let capturedPayload: unknown = null;
   const originalFetch = global.fetch;
@@ -309,7 +309,7 @@ test('auto-capture hook strips injected recall blocks before sanitization', asyn
     assert.ok(capturedPayload !== null, 'expected capture payload to be submitted');
     const messages = (capturedPayload as any)?.messages as Array<{ role: string; content: string }>;
     const userContent = messages?.find((m) => m.role === 'user')?.content ?? '';
-    assert.ok(!userContent.includes('<relevant_memories>'), 'injected block should be stripped from captured text');
+    assert.ok(!userContent.includes('<recall>'), 'injected block should be stripped from captured text');
     assert.ok(userContent.includes('Please reply in English'), 'actual user intent should be preserved');
   } finally {
     global.fetch = originalFetch;

@@ -10,7 +10,7 @@ export function buildAutoRecallBlock(memories: SearchResult['memories'], config:
     .slice(0, config.topK)
     .map((memory) => `- [${memory.scope}] ${memory.text}`);
   const sourceAttr = source ? ` source="${source}"` : '';
-  let block = `<relevant_memories${sourceAttr}>\n${lines.join('\n')}\n</relevant_memories>`;
+  let block = `<recall${sourceAttr}>\n${lines.join('\n')}\n</recall>`;
   if (block.length > config.maxChars) {
     block = `${block.slice(0, Math.max(0, config.maxChars - 3))}...`;
   }

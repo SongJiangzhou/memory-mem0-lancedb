@@ -4,7 +4,7 @@ import { hasMem0Auth, buildMem0Headers } from './auth';
 import { summarizeText, type PluginDebugLogger } from '../debug/logger';
 
 export type Mem0StoreResult =
-  | { status: 'submitted'; mem0_id: string | null; event_id: string | null; hash: string | null }
+  | { status: 'submitted'; mem0_id: string | null; event_id: string | null; hash: string | null; extractedMemories?: Mem0ExtractedMemory[] }
   | { status: 'unavailable' };
 
 export type Mem0EventResult =
@@ -131,11 +131,28 @@ export class HttpMem0Client implements Mem0Client {
     }
 
     const data: any = await response.json();
-    this.debug?.basic('mem0.capture.submitted', { status: response.status, eventId: data.event_id || data.id || null, mem0Id: data.id || data.mem0_id || null });
+    this.debug?.verbose('mem0.capture.response_raw', { isArray: Array.isArray(data), keys: Array.isArray(data) ? [] : Object.keys(data || {}) });
+
+    // Mem0 may return extracted memories directly as an array (no event polling needed)
+    if (Array.isArray(data)) {
+      const extractedMemories: Mem0ExtractedMemory[] = data
+        .map((item: any) => ({
+          id: item.id || null,
+          text: item.memory || item.text || '',
+          categories: Array.isArray(item.categories) ? item.categories : [],
+          hash: item.hash || null,
+        }))
+        .filter((m: Mem0ExtractedMemory) => Boolean(m.text));
+      this.debug?.basic('mem0.capture.submitted', { status: response.status, extractedCount: extractedMemories.length, mode: 'direct' });
+      return { status: 'submitted', mem0_id: null, event_id: null, hash: null, extractedMemories };
+    }
+
+    const event_id = data.event_id || null;
+    this.debug?.basic('mem0.capture.submitted', { status: response.status, eventId: event_id, mem0Id: data.id || data.mem0_id || null, mode: 'event' });
     return {
       status: 'submitted',
       mem0_id: data.id || data.mem0_id || null,
-      event_id: data.event_id || data.id || null,
+      event_id,
       hash: data.hash || null,
     };
   }

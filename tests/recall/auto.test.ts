@@ -34,16 +34,16 @@ function buildConfig(overrides?: Partial<AutoRecallConfig>): AutoRecallConfig {
   };
 }
 
-test('buildAutoRecallBlock formats stable relevant_memories block', () => {
+test('buildAutoRecallBlock formats stable recall block', () => {
   const block = buildAutoRecallBlock(
     [buildMemory('User preference: reply in English'), buildMemory('User likes sci-fi movies')],
     buildConfig(),
   );
 
-  assert.match(block, /<relevant_memories/);
+  assert.match(block, /<recall/);
   assert.match(block, /reply in English/);
   assert.match(block, /User likes sci-fi movies/);
-  assert.match(block, /<\/relevant_memories>/);
+  assert.match(block, /<\/recall>/);
 });
 
 test('buildAutoRecallBlock includes source attribute when provided', () => {
