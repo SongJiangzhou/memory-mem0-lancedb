@@ -20,13 +20,19 @@ export function buildAutoCapturePayload(params: {
 }): AutoCapturePayload | null {
   const rawUserMessage = truncate(params.latestUserMessage || '', params.config.maxCharsPerMessage);
   const rawAssistantMessage = truncate(params.latestAssistantMessage || '', params.config.maxCharsPerMessage);
-  const userCandidate = stripHostArtifacts(rawUserMessage);
-  const assistantCandidate = stripHostArtifacts(rawAssistantMessage);
+  const userCandidate = stripInjectedArtifacts(rawUserMessage);
+  const assistantCandidate = stripInjectedArtifacts(rawAssistantMessage);
 
   const { isRestricted: userRestricted } = sanitizeMemoryText(userCandidate);
   const { cleanText: assistantMessage, isRestricted: assistantRestricted } = sanitizeMemoryText(assistantCandidate);
 
-  if (!userCandidate || userRestricted || assistantRestricted) {
+  if (
+    !userCandidate ||
+    userRestricted ||
+    assistantRestricted ||
+    containsInjectedArtifacts(userCandidate) ||
+    containsInjectedArtifacts(assistantMessage)
+  ) {
     return null; // Reject capture if restricted content is present
   }
 
@@ -57,14 +63,21 @@ function truncate(value: string, maxChars: number): string {
   return String(value || '').slice(0, Math.max(0, maxChars));
 }
 
-function stripHostArtifacts(value: string): string {
+export function stripInjectedArtifacts(value: string): string {
   return String(value || '')
+    .replace(/<capture[^>]*>[\s\S]*?<\/capture>/g, '')
     .replace(/<recall[^>]*>[\s\S]*?<\/recall>/g, '')
     .replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, '')
     .replace(/(?:Sender|Conversation info) \(untrusted metadata\):\n***REMOVED***\n[\s\S]*?***REMOVED***\n?/g, '')
     .replace(/\[\[reply_to_current\]\]\s*/g, '')
     .replace(/^\[[\w\s,:/+-]+\]\s*/gm, '')
     .trim();
+}
+
+export function containsInjectedArtifacts(value: string): boolean {
+  return /<capture\b|<recall\b|<relevant_memories\b|\[\[reply_to_current\]\]|(?:Sender|Conversation info) \(untrusted metadata\):/i.test(
+    String(value || ''),
+  );
 }
 
 function shouldDropAssistantMessage(value: string): boolean {

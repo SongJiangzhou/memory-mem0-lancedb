@@ -7,7 +7,7 @@ import { LanceDbMemoryAdapter } from './bridge/adapter';
 import { MemorySearchTool } from './tools/search';
 import { MemoryStoreTool } from './tools/store';
 import { MemoryGetTool } from './tools/get';
-import { buildAutoCapturePayload } from './capture/auto';
+import { buildAutoCapturePayload, stripInjectedArtifacts } from './capture/auto';
 import { syncCapturedMemories } from './capture/sync';
 import { HttpMem0Client } from './control/mem0';
 import { runAutoRecall } from './recall/auto';
@@ -457,7 +457,7 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
     const msg = messages[i] as any;
     const role = String(msg?.role || msg?.author || '');
     const raw = extractTextContent(msg?.content);
-    const content = stripInjectedBlocks(raw).trim();
+    const content = stripInjectedArtifacts(raw).trim();
     if (!content) continue;
     if (role === 'assistant' && !latestAssistantMessage) {
       latestAssistantMessage = content;
@@ -468,19 +468,6 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
   }
 
   return { latestUserMessage, latestAssistantMessage };
-}
-
-/**
- * Remove auto-recall injected blocks from message text before capture.
- * Prevents recall context (which may contain restricted keywords like "password")
- * from poisoning the sanitizer and causing legitimate turns to be dropped.
- */
-function stripInjectedBlocks(text: string): string {
-  return text
-    .replace(/<recall[^>]*>[\s\S]*?<\/recall>/g, '')
-    .replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, '') // legacy
-    .replace(/(?:Sender|Conversation info) \(untrusted metadata\):\n***REMOVED***\n[\s\S]*?***REMOVED***\n?/g, '')
-    .replace(/^\[[\w\s,:/+-]+\]\s*/m, ''); // strip leading timestamp e.g. [Mon 2026-03-09 01:13 GMT+8]
 }
 
 function extractTextContent(content: unknown): string {

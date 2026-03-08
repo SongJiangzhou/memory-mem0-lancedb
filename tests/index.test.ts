@@ -372,6 +372,101 @@ test('before_prompt_build surfaces pending capture notification from previous su
   }
 });
 
+test('auto-capture does not send prior capture notification back to mem0 on the next turn', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-roundtrip-'));
+  const hooks: Array<{ name: string; handler: Function }> = [];
+  const originalFetch = global.fetch;
+  const capturePayloads: string[] = [];
+
+  try {
+    global.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.endsWith('/v1/memories/')) {
+        const body = JSON.parse(String(init.body || '{}'));
+        capturePayloads.push(body.messages?.map((msg: any) => msg.content).join('\n') || '');
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: `mem0-captured-${capturePayloads.length}`,
+              data: { memory: `Memory ${capturePayloads.length}` },
+              event: 'ADD',
+            },
+          ]),
+        };
+      }
+      throw new Error(`unexpected fetch url: ${url}`);
+    }) as typeof fetch;
+
+    register({
+      pluginConfig: {
+        lancedbPath: join(dir, 'lancedb'),
+        auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+        outboxDbPath: join(dir, 'outbox.json'),
+        mem0: {
+          mode: 'remote',
+          baseUrl: 'https://api.mem0.ai',
+          apiKey: 'test-key',
+        },
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+        autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
+        autoCapture: {
+          enabled: true,
+          scope: 'long-term',
+          requireAssistantReply: true,
+          maxCharsPerMessage: 2000,
+        },
+      },
+      registerTool() {},
+      registerHook(name: string, handler: Function) {
+        hooks.push({ name, handler });
+      },
+    } as any);
+
+    const captureHook = hooks.find((entry) => entry.name === 'agent_end');
+    const recallHook = hooks.find((entry) => entry.name === 'before_prompt_build');
+    assert.ok(captureHook);
+    assert.ok(recallHook);
+
+    await captureHook?.handler(
+      {
+        messages: [
+          { role: 'user', content: 'I enjoy one food.' },
+          { role: 'assistant', content: 'Noted. You enjoy one food.' },
+        ],
+        success: true,
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    const injected = await recallHook?.handler(
+      {
+        prompt: 'hello',
+        messages: [{ role: 'user', content: 'hello' }],
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    await captureHook?.handler(
+      {
+        messages: [
+          { role: 'user', content: `${injected?.prependContext || ''}\n\nI enjoy another food.` },
+          { role: 'assistant', content: 'Noted. You enjoy another food.' },
+        ],
+        success: true,
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    assert.equal(capturePayloads.length, 2);
+    assert.doesNotMatch(capturePayloads[1] || '', /<capture via="mem0"/);
+    assert.match(capturePayloads[1] || '', /I enjoy another food\./);
+  } finally {
+    global.fetch = originalFetch;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('auto-capture hook strips injected recall blocks before sanitization', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
 

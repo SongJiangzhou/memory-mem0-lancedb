@@ -82,3 +82,19 @@ test('auto capture strips host reply markers and drops acknowledgement-only assi
     { role: 'user', content: 'I work at a technology company in office zone A' },
   ]);
 });
+
+test('auto capture strips injected capture blocks from the next user turn', () => {
+  const payload = buildAutoCapturePayload({
+    userId: 'user-1',
+    latestUserMessage:
+      '<capture via="mem0" count="1" synced="lancedb">\n- User enjoys a certain food.\n</capture>\n\nI enjoy another food.',
+    latestAssistantMessage: 'Noted. You enjoy another food.',
+    config: buildConfig({ maxCharsPerMessage: 2000 }),
+  });
+
+  assert.ok(payload);
+  assert.deepEqual(payload?.messages, [
+    { role: 'user', content: 'I enjoy another food.' },
+    { role: 'assistant', content: 'Noted. You enjoy another food.' },
+  ]);
+});
