@@ -425,7 +425,7 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
  * from poisoning the sanitizer and causing legitimate turns to be dropped.
  */
 function stripInjectedBlocks(text: string): string {
-  return text.replace(/<relevant_memories>[\s\S]*?<\/relevant_memories>/g, '');
+  return text.replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, '');
 }
 
 function extractTextContent(content: unknown): string {
