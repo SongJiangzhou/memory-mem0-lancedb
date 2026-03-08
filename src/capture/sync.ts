@@ -2,6 +2,7 @@ import { buildMemoryUid } from '../bridge/uid';
 import { LanceDbMemoryAdapter, type MemoryAdapter } from '../bridge/adapter';
 import type { Mem0ExtractedMemory } from '../control/mem0';
 import { FileAuditStore } from '../audit/store';
+import { summarizeText, type PluginDebugLogger } from '../debug/logger';
 import type { MemoryRecord, MemorySyncPayload } from '../types';
 
 const CAPTURE_UID_BUCKET = '1970-01-01T00';
@@ -15,11 +16,13 @@ export async function syncCapturedMemories(params: {
   auditStore: FileAuditStore;
   adapter: MemoryAdapter;
   tsEvent?: string;
+  debug?: PluginDebugLogger;
 }): Promise<{ synced: number; memoryUids: string[] }> {
   const tsEvent = params.tsEvent || new Date().toISOString();
   const existingUids = new Set((await params.auditStore.readAll()).map((record) => record.memory_uid));
   const memoryUids: string[] = [];
   let synced = 0;
+  params.debug?.basic('capture_sync.start', { eventId: params.eventId, count: params.memories.length, scope: params.scope });
 
   for (const memory of params.memories) {
     const memoryPayload = toMemoryPayload(memory, params, tsEvent);
@@ -34,6 +37,7 @@ export async function syncCapturedMemories(params: {
     memoryUids.push(memoryUid);
 
     if (existingUids.has(memoryUid) || (await params.adapter.exists(memoryUid))) {
+      params.debug?.verbose('capture_sync.duplicate', { eventId: params.eventId, memoryUid, ...summarizeText(memory.text) });
       continue;
     }
 
@@ -45,8 +49,10 @@ export async function syncCapturedMemories(params: {
     });
     existingUids.add(memoryUid);
     synced += 1;
+    params.debug?.verbose('capture_sync.synced_memory', { eventId: params.eventId, memoryUid, ...summarizeText(memory.text) });
   }
 
+  params.debug?.basic('capture_sync.done', { eventId: params.eventId, synced, total: params.memories.length });
   return { synced, memoryUids };
 }
 

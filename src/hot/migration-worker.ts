@@ -1,4 +1,5 @@
 import { openMemoryTable } from '../db/table';
+import type { PluginDebugLogger } from '../debug/logger';
 import { embedText } from './embedder';
 import { discoverMemoryTables } from './table-discovery';
 import type { PluginConfig } from '../types';
@@ -8,11 +9,13 @@ const DEFAULT_BATCH_SIZE = 20;
 
 export class EmbeddingMigrationWorker {
   private readonly config: PluginConfig;
+  private readonly debug?: PluginDebugLogger;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
-  constructor(config: PluginConfig) {
+  constructor(config: PluginConfig, debug?: PluginDebugLogger) {
     this.config = config;
+    this.debug = debug;
   }
 
   start(intervalMs: number = this.getMigrationConfig().intervalMs): void {
@@ -63,10 +66,15 @@ export class EmbeddingMigrationWorker {
     const batchSize = this.getMigrationConfig().batchSize;
     const tables = await discoverMemoryTables(this.config.lancedbPath, currentDim);
     const legacyTables = tables.filter((table) => table.dimension !== currentDim);
+    let migrated = 0;
+    let failed = 0;
 
     if (legacyTables.length === 0) {
+      this.debug?.basic('embedding_migration.skipped', { reason: 'no_legacy_tables' });
       return;
     }
+
+    this.debug?.basic('embedding_migration.start', { sourceTables: legacyTables.length, targetDimension: currentDim, batchSize });
 
     let remaining = batchSize;
     for (const tableInfo of legacyTables) {
@@ -99,7 +107,16 @@ export class EmbeddingMigrationWorker {
           await this.upsertCurrentRow(migratedRow);
           await sourceTable.delete(`memory_uid = '${escapeSqlString(String(row.memory_uid || ''))}'`);
           remaining -= 1;
+          migrated += 1;
+          this.debug?.verbose('embedding_migration.row', { memoryUid: String(row.memory_uid || ''), sourceDimension: tableInfo.dimension, targetDimension: currentDim });
         } catch (err) {
+          failed += 1;
+          this.debug?.error('embedding_migration.error', {
+            memoryUid: String(row.memory_uid || ''),
+            sourceDimension: tableInfo.dimension,
+            targetDimension: currentDim,
+            message: err instanceof Error ? err.message : String(err),
+          });
           console.error(
             `[EmbeddingMigrationWorker] Failed to migrate memory_uid=${String(row.memory_uid || '')} `
             + `from d${tableInfo.dimension} to d${currentDim}:`,
@@ -108,6 +125,8 @@ export class EmbeddingMigrationWorker {
         }
       }
     }
+
+    this.debug?.basic('embedding_migration.done', { migrated, failed, targetDimension: currentDim });
   }
 
   private shouldMigrateRow(row: any): boolean {

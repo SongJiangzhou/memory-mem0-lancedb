@@ -7,6 +7,7 @@ import test from 'node:test';
 import { FileAuditStore } from '../../src/audit/store';
 import { InMemoryMemoryAdapter } from '../../src/bridge/adapter';
 import type { Mem0ExtractedMemory } from '../../src/control/mem0';
+import { PluginDebugLogger } from '../../src/debug/logger';
 import { syncCapturedMemories } from '../../src/capture/sync';
 
 function createExtractedMemory(overrides?: Partial<Mem0ExtractedMemory>): Mem0ExtractedMemory {
@@ -88,6 +89,51 @@ test('capture sync skips duplicate extracted memories by memory uid', async () =
     assert.equal(second.synced, 0);
     assert.equal(records.length, 1);
     assert.deepEqual(first.memoryUids, second.memoryUids);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('capture sync emits debug events for synced and duplicate memories', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'capture-sync-'));
+
+  try {
+    const messages: string[] = [];
+    const debug = new PluginDebugLogger(
+      { mode: 'verbose' },
+      { info: (msg: string) => messages.push(msg), warn: (msg: string) => messages.push(msg), error: (msg: string) => messages.push(msg) },
+    );
+    const auditStore = new FileAuditStore(join(dir, 'audit', 'memory_records.jsonl'));
+    const adapter = new InMemoryMemoryAdapter();
+
+    await syncCapturedMemories({
+      memories: [createExtractedMemory()],
+      userId: 'user-1',
+      runId: 'run-1',
+      scope: 'long-term',
+      eventId: 'evt-capture',
+      auditStore,
+      adapter,
+      tsEvent: '2026-03-07T12:00:00.000Z',
+      debug,
+    });
+    await syncCapturedMemories({
+      memories: [createExtractedMemory()],
+      userId: 'user-1',
+      runId: 'run-1',
+      scope: 'long-term',
+      eventId: 'evt-capture',
+      auditStore,
+      adapter,
+      tsEvent: '2026-03-07T12:00:00.000Z',
+      debug,
+    });
+
+    const output = messages.join('\n');
+    assert.match(output, /capture_sync\.start/);
+    assert.match(output, /capture_sync\.synced_memory/);
+    assert.match(output, /capture_sync\.duplicate/);
+    assert.match(output, /capture_sync\.done/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

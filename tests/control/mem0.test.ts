@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { HttpMem0Client } from '../../src/control/mem0';
 import { buildAutoCapturePayload } from '../../src/capture/auto';
+import { PluginDebugLogger } from '../../src/debug/logger';
 import type { MemoryRecord, PluginConfig } from '../../src/types';
 
 function buildConfig(): PluginConfig {
@@ -251,4 +252,40 @@ test('http mem0 client returns empty extracted memories when response has no ite
   const memories = await client.fetchCapturedMemories({ userId: 'user-1', eventId: 'evt-missing' });
 
   assert.deepEqual(memories, []);
+});
+
+test('http mem0 client emits debug events for capture and fetch flows', async () => {
+  const messages: string[] = [];
+  const debug = new PluginDebugLogger(
+    { mode: 'verbose' },
+    { info: (msg: string) => messages.push(msg), warn: (msg: string) => messages.push(msg), error: (msg: string) => messages.push(msg) },
+  );
+  const fetchStub = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('/v1/memories/?')) {
+      return {
+        ok: true,
+        json: async () => ({ items: [{ id: 'm1', memory: 'captured text', categories: ['preference'], hash: 'h1' }] }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ id: 'capture-1', event_id: 'evt-capture', hash: 'h1' }),
+    };
+  }) as unknown as typeof fetch;
+  const client = new HttpMem0Client(buildConfig(), fetchStub, debug);
+  const payload = buildAutoCapturePayload({
+    userId: 'user-1',
+    latestUserMessage: 'Remember I prefer concise replies',
+    latestAssistantMessage: 'Understood.',
+    config: { enabled: true, scope: 'long-term', requireAssistantReply: true, maxCharsPerMessage: 2000 },
+  });
+
+  await client.captureTurn(payload!);
+  await client.fetchCapturedMemories({ userId: 'user-1', eventId: 'evt-capture' });
+
+  const output = messages.join('\n');
+  assert.match(output, /mem0\.capture\.submitted/);
+  assert.match(output, /mem0\.fetch_captured\.result/);
+  assert.match(output, /captured text/);
 });

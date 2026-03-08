@@ -1,14 +1,17 @@
 import { LanceDbMemoryAdapter } from './adapter';
 import { hasMem0Auth, buildMem0Headers } from '../control/auth';
+import type { PluginDebugLogger } from '../debug/logger';
 import type { PluginConfig } from '../types';
 
 export class Mem0Poller {
   private timer: NodeJS.Timeout | null = null;
   private readonly config: PluginConfig;
+  private readonly debug?: PluginDebugLogger;
   private lastSyncTime: string;
 
-  constructor(config: PluginConfig) {
+  constructor(config: PluginConfig, debug?: PluginDebugLogger) {
     this.config = config;
+    this.debug = debug;
     this.lastSyncTime = new Date().toISOString();
   }
 
@@ -30,10 +33,12 @@ export class Mem0Poller {
 
   async poll() {
     if (!hasMem0Auth(this.config) || !this.config.mem0BaseUrl) {
+      this.debug?.basic('mem0_poller.skipped', { reason: 'mem0_unavailable' });
       return;
     }
 
     try {
+      this.debug?.basic('mem0_poller.start', { baseUrl: this.config.mem0BaseUrl, mode: this.config.mem0Mode });
       const url = new URL(`${this.config.mem0BaseUrl}/v1/memories/`);
       url.searchParams.set('user_id', 'railgun');
       
@@ -48,8 +53,10 @@ export class Mem0Poller {
 
       const data: any = await response.json();
       const memories = Array.isArray(data) ? data : Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
+      this.debug?.basic('mem0_poller.fetched', { count: memories.length });
       
       const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath, this.config.embedding);
+      let synced = 0;
 
       for (const mem of memories) {
         const memoryUid = mem.metadata?.memory_uid || mem.id;
@@ -82,9 +89,13 @@ export class Mem0Poller {
             },
           }
         });
+        synced += 1;
+        this.debug?.verbose('mem0_poller.synced_memory', { memoryUid });
       }
       this.lastSyncTime = new Date().toISOString();
+      this.debug?.basic('mem0_poller.done', { fetched: memories.length, synced });
     } catch (err) {
+      this.debug?.error('mem0_poller.error', { message: err instanceof Error ? err.message : String(err) });
       console.error('[Mem0Poller] Poll failed:', err);
     }
   }

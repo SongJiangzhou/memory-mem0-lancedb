@@ -38,6 +38,19 @@
         "type": "string",
         "default": "~/.openclaw/workspace/data/memory_audit/memory_records.jsonl"
       },
+      "debug": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["off", "basic", "verbose"],
+            "default": "off"
+          },
+          "logDir": {
+            "type": "string"
+          }
+        }
+      },
       "autoRecall": {
         "type": "object",
         "properties": {

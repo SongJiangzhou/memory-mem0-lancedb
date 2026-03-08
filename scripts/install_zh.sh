@@ -263,6 +263,8 @@ try {
         AUTO_CAPTURE_SCOPE="long-term"
         AUTO_CAPTURE_REQUIRE_REPLY="true"
         AUTO_CAPTURE_MAX_CHARS=2000
+        DEBUG_MODE="basic"
+        DEBUG_LOG_DIR=""
 
         if ask_yes_no "  是否启用自动提取?" "n"; then
             AUTO_CAPTURE_ENABLED="true"
@@ -282,6 +284,32 @@ try {
             echo "  ✓ 自动提取已禁用"
         fi
 
+        echo ""
+        echo "─── 调试日志 (Debug Logging) ─────────────────────────────"
+        echo ""
+        echo "请选择记忆链路排障时的日志打印模式。"
+        ask_choice "  调试模式:" \
+            "basic（推荐）" \
+            "off" \
+            "verbose" \
+            "verbose + file"
+        case $? in
+            0)
+                DEBUG_MODE="basic"
+                ;;
+            1)
+                DEBUG_MODE="off"
+                ;;
+            2)
+                DEBUG_MODE="verbose"
+                ;;
+            3)
+                DEBUG_MODE="verbose"
+                DEBUG_LOG_DIR=$(ask_input "  调试日志目录" "~/.openclaw/workspace/logs/openclaw-mem0-lancedb")
+                ;;
+        esac
+        echo "  ✓ 调试模式已设置为 ${DEBUG_MODE}${DEBUG_LOG_DIR:+ (logDir=${DEBUG_LOG_DIR})}"
+
         # ─── Write configuration ────────────────────────────────────
         echo ""
         echo "─── 正在保存配置 ─────────────────────────────────────────"
@@ -297,6 +325,9 @@ try {
   },
   "outboxDbPath": "${HOME}/.openclaw/workspace/data/memory_outbox.db",
   "auditStorePath": "${HOME}/.openclaw/workspace/data/memory_audit/memory_records.jsonl",
+  "debug": {
+    "mode": "${DEBUG_MODE}"$(if [ -n "${DEBUG_LOG_DIR}" ]; then printf ',\n    "logDir": "%s"' "${DEBUG_LOG_DIR}"; fi)
+  },
   "autoRecall": {
     "enabled": ${AUTO_RECALL_ENABLED},
     "topK": ${AUTO_RECALL_TOPK},

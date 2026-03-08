@@ -9,6 +9,7 @@ import { HttpMem0Client } from './control/mem0';
 import { runAutoRecall } from './recall/auto';
 import { Mem0Poller } from './bridge/poller';
 import { EmbeddingMigrationWorker } from './hot/migration-worker';
+import { PluginDebugLogger, summarizeText } from './debug/logger';
 import type { PluginConfig } from './types';
 
 function textResult(summary: string, details: any) {
@@ -58,6 +59,10 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
       enabled: raw?.embeddingMigration?.enabled ?? true,
       intervalMs: raw?.embeddingMigration?.intervalMs || 15 * 60 * 1000,
       batchSize: raw?.embeddingMigration?.batchSize || 20,
+    },
+    debug: {
+      mode: raw?.debug?.mode || 'off',
+      logDir: raw?.debug?.logDir || undefined,
     },
   };
 }
@@ -112,14 +117,28 @@ function resolveEmbeddingConfig(raw?: Partial<PluginConfig>, apiConfig?: any): P
 // OpenClaw 插件入口必须是函数或带 register() 的对象，不能直接导出 class。
 export default function register(api: OpenClawApi) {
   const cfg = resolveConfig(api.pluginConfig, api.config);
+  const debug = new PluginDebugLogger(cfg.debug, api.logger);
   const customSearch = new MemorySearchTool(cfg);
-  const customStore = new MemoryStoreTool(cfg);
+  const customStore = new MemoryStoreTool(cfg, debug);
   const customGet = new MemoryGetTool(cfg);
 
-  const poller = new Mem0Poller(cfg);
+  debug.basic('plugin.register', {
+    mem0Mode: cfg.mem0Mode,
+    mem0BaseUrl: cfg.mem0BaseUrl,
+    autoRecallEnabled: cfg.autoRecall.enabled,
+    autoCaptureEnabled: cfg.autoCapture.enabled,
+    embeddingDimension: cfg.embedding.dimension,
+    embeddingMigrationEnabled: cfg.embeddingMigration?.enabled ?? true,
+    debugMode: cfg.debug?.mode || 'off',
+    debugLogDir: cfg.debug?.logDir,
+  });
+
+  const poller = new Mem0Poller(cfg, debug);
   poller.start();
-  const migrationWorker = new EmbeddingMigrationWorker(cfg);
+  debug.basic('plugin.poller_started', {});
+  const migrationWorker = new EmbeddingMigrationWorker(cfg, debug);
   migrationWorker.start();
+  debug.basic('plugin.migration_worker_started', {});
 
   // memory slot 主工具：完全走新机制（不再桥接 memory-core）
   api.registerTool({
@@ -233,6 +252,7 @@ export default function register(api: OpenClawApi) {
         query: String(latestUserMessage),
         userId: context?.userId || 'railgun',
         config: cfg.autoRecall,
+        debug,
         search: (params) => customSearch.execute(params),
       });
     }, { name: 'mem0-auto-recall' });
@@ -248,10 +268,17 @@ export default function register(api: OpenClawApi) {
         config: cfg.autoCapture,
       });
       if (!payload) {
+        debug.basic('auto_capture.skipped', { reason: 'no_payload' });
         return null;
       }
 
-      const mem0Client = new HttpMem0Client(cfg);
+      debug.basic('auto_capture.start', {
+        userId: payload.userId,
+        scope: payload.scope,
+        idempotencyKey: payload.idempotencyKey,
+        ...summarizeText(payload.messages.map((m) => m.content).join('\n')),
+      });
+      const mem0Client = new HttpMem0Client(cfg, fetch, debug);
       const submitted = await mem0Client.captureTurn(payload);
       if (submitted.status === 'submitted' && submitted.event_id) {
         const confirmation = await mem0Client.waitForEvent(submitted.event_id, { attempts: 2, delayMs: 0 });
@@ -268,13 +295,21 @@ export default function register(api: OpenClawApi) {
             eventId: submitted.event_id,
             auditStore: new FileAuditStore(cfg.auditStorePath),
             adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
+            debug,
+          });
+          debug.basic('auto_capture.done', {
+            eventId: submitted.event_id,
+            extractedCount: extractedMemories.length,
+            synced: synced.synced,
           });
           return { submitted, confirmation, synced };
         }
 
+        debug.basic('auto_capture.unconfirmed', { eventId: submitted.event_id, status: confirmation.status });
         return { submitted, confirmation };
       }
 
+      debug.basic('auto_capture.unavailable', { status: submitted.status });
       return { submitted };
     }, { name: 'mem0-auto-capture' });
   }

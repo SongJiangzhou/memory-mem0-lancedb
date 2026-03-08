@@ -1,6 +1,7 @@
 import type { MemoryRecord, PluginConfig } from '../types';
 import type { AutoCapturePayload } from '../capture/auto';
 import { hasMem0Auth, buildMem0Headers } from './auth';
+import { summarizeText, type PluginDebugLogger } from '../debug/logger';
 
 export type Mem0StoreResult =
   | { status: 'submitted'; mem0_id: string | null; event_id: string | null; hash: string | null }
@@ -28,19 +29,31 @@ export interface Mem0Client {
 export class HttpMem0Client implements Mem0Client {
   private readonly config: PluginConfig;
   private readonly fetchImpl: typeof fetch;
+  private readonly debug?: PluginDebugLogger;
 
-  constructor(config: PluginConfig, fetchImpl: typeof fetch = fetch) {
+  constructor(config: PluginConfig, fetchImpl: typeof fetch = fetch, debug?: PluginDebugLogger) {
     this.config = config;
     this.fetchImpl = fetchImpl;
+    this.debug = debug;
   }
 
   async storeMemory(record: MemoryRecord): Promise<Mem0StoreResult> {
     if (!hasMem0Auth(this.config)) {
+      this.debug?.basic('mem0.store.unavailable', { reason: 'missing_auth', mode: this.config.mem0Mode });
       return { status: 'unavailable' };
     }
 
     let response;
     try {
+      this.debug?.basic('mem0.store.request', {
+        url: `${this.config.mem0BaseUrl}/v1/memories/`,
+        mode: this.config.mem0Mode,
+        userId: record.user_id,
+      });
+      this.debug?.verbose('mem0.store.payload', {
+        ...summarizeText(record.text),
+        categories: record.categories?.length || 0,
+      });
       response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/memories/`, {
         method: 'POST',
         headers: buildMem0Headers(this.config, { json: true }),
@@ -58,6 +71,7 @@ export class HttpMem0Client implements Mem0Client {
         }),
       });
     } catch {
+      this.debug?.error('mem0.store.error', { message: 'request_failed', mode: this.config.mem0Mode });
       return { status: 'unavailable' };
     }
 
@@ -66,6 +80,7 @@ export class HttpMem0Client implements Mem0Client {
     }
 
     const data: any = await response.json();
+    this.debug?.basic('mem0.store.submitted', { status: response.status, eventId: data.event_id || data.id || null, mem0Id: data.id || data.mem0_id || null });
     return {
       status: 'submitted',
       mem0_id: data.id || data.mem0_id || null,
@@ -76,11 +91,22 @@ export class HttpMem0Client implements Mem0Client {
 
   async captureTurn(payload: AutoCapturePayload): Promise<Mem0StoreResult> {
     if (!hasMem0Auth(this.config)) {
+      this.debug?.basic('mem0.capture.unavailable', { reason: 'missing_auth', mode: this.config.mem0Mode });
       return { status: 'unavailable' };
     }
 
     let response;
     try {
+      this.debug?.basic('mem0.capture.request', {
+        url: `${this.config.mem0BaseUrl}/v1/memories/`,
+        mode: this.config.mem0Mode,
+        userId: payload.userId,
+      });
+      this.debug?.verbose('mem0.capture.payload', {
+        idempotencyKey: payload.idempotencyKey,
+        messageCount: payload.messages.length,
+        ...summarizeText(payload.messages.map((m) => m.content).join('\n')),
+      });
       response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/memories/`, {
         method: 'POST',
         headers: buildMem0Headers(this.config, { json: true }),
@@ -96,6 +122,7 @@ export class HttpMem0Client implements Mem0Client {
         }),
       });
     } catch {
+      this.debug?.error('mem0.capture.error', { message: 'request_failed', mode: this.config.mem0Mode });
       return { status: 'unavailable' };
     }
 
@@ -104,6 +131,7 @@ export class HttpMem0Client implements Mem0Client {
     }
 
     const data: any = await response.json();
+    this.debug?.basic('mem0.capture.submitted', { status: response.status, eventId: data.event_id || data.id || null, mem0Id: data.id || data.mem0_id || null });
     return {
       status: 'submitted',
       mem0_id: data.id || data.mem0_id || null,
@@ -114,6 +142,7 @@ export class HttpMem0Client implements Mem0Client {
 
   async waitForEvent(eventId: string, options?: { attempts?: number; delayMs?: number }): Promise<Mem0EventResult> {
     if (!hasMem0Auth(this.config)) {
+      this.debug?.basic('mem0.event.unavailable', { reason: 'missing_auth', mode: this.config.mem0Mode, eventId });
       return { status: 'unavailable' };
     }
 
@@ -123,11 +152,13 @@ export class HttpMem0Client implements Mem0Client {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response;
       try {
+        this.debug?.verbose('mem0.event.poll', { eventId, attempt: attempt + 1, attempts });
         response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/events/${eventId}`, {
           method: 'GET',
           headers: buildMem0Headers(this.config),
         });
       } catch {
+        this.debug?.error('mem0.event.error', { eventId, attempt: attempt + 1, message: 'request_failed' });
         return { status: 'unavailable' };
       }
 
@@ -137,6 +168,7 @@ export class HttpMem0Client implements Mem0Client {
 
       const data: any = await response.json();
       if (String(data.status || '').toLowerCase() === 'completed') {
+        this.debug?.basic('mem0.event.confirmed', { eventId, attempt: attempt + 1 });
         return { status: 'confirmed' };
       }
 
@@ -145,11 +177,13 @@ export class HttpMem0Client implements Mem0Client {
       }
     }
 
+    this.debug?.basic('mem0.event.timeout', { eventId, attempts });
     return { status: 'timeout' };
   }
 
   async fetchCapturedMemories(params: { userId: string; eventId: string }): Promise<Mem0ExtractedMemory[]> {
     if (!hasMem0Auth(this.config)) {
+      this.debug?.basic('mem0.fetch_captured.unavailable', { reason: 'missing_auth', mode: this.config.mem0Mode, eventId: params.eventId });
       return [];
     }
 
@@ -160,11 +194,13 @@ export class HttpMem0Client implements Mem0Client {
     
     let response;
     try {
+      this.debug?.basic('mem0.fetch_captured.request', { eventId: params.eventId, userId: params.userId });
       response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/memories/?${query.toString()}`, {
         method: 'GET',
         headers: buildMem0Headers(this.config),
       });
     } catch {
+      this.debug?.error('mem0.fetch_captured.error', { eventId: params.eventId, message: 'request_failed' });
       return [];
     }
 
@@ -174,7 +210,7 @@ export class HttpMem0Client implements Mem0Client {
 
     const data: any = await response.json();
     const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
-    return items
+    const memories = items
       .map((item: any) => ({
         id: item.id || item.mem0_id || null,
         text: item.memory || item.text || '',
@@ -182,6 +218,15 @@ export class HttpMem0Client implements Mem0Client {
         hash: item.hash || null,
       }))
       .filter((item: Mem0ExtractedMemory) => Boolean(item.text));
+    this.debug?.basic('mem0.fetch_captured.result', { eventId: params.eventId, count: memories.length });
+    memories.forEach((memory: Mem0ExtractedMemory) => {
+      this.debug?.verbose('mem0.fetch_captured.memory', {
+        eventId: params.eventId,
+        id: memory.id,
+        ...summarizeText(memory.text),
+      });
+    });
+    return memories;
   }
 }
 

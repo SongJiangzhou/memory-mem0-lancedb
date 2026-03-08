@@ -54,6 +54,25 @@ test('resolveConfig does not read deprecated top-level mem0 auth fields', async 
   assert.equal(config.mem0ApiKey, '');
 });
 
+test('resolveConfig sets debug defaults', async () => {
+  const config = resolveConfig();
+
+  assert.equal(config.debug?.mode, 'off');
+  assert.equal(config.debug?.logDir, undefined);
+});
+
+test('resolveConfig respects debug overrides', async () => {
+  const config = resolveConfig({
+    debug: {
+      mode: 'verbose',
+      logDir: '/tmp/openclaw-debug',
+    },
+  } as any);
+
+  assert.equal(config.debug?.mode, 'verbose');
+  assert.equal(config.debug?.logDir, '/tmp/openclaw-debug');
+});
+
 test('register installs auto-recall hook when enabled and hook api exists', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
   const tools: string[] = [];

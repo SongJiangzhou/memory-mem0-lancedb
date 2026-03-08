@@ -6,24 +6,33 @@ import { FileOutbox } from '../bridge/outbox';
 import { MemorySyncEngine } from '../bridge/sync-engine';
 import { HttpMem0Client } from '../control/mem0';
 import { sanitizeMemoryText } from '../capture/security';
+import { PluginDebugLogger, summarizeText } from '../debug/logger';
 import type { MemorySyncPayload, PluginConfig, StoreParams, StoreResult } from '../types';
 
 export class MemoryStoreTool {
   private config: PluginConfig;
+  private readonly debug: PluginDebugLogger;
 
-  constructor(config: PluginConfig) {
+  constructor(config: PluginConfig, debug?: PluginDebugLogger) {
     this.config = config;
+    this.debug = debug || new PluginDebugLogger(config.debug);
   }
 
   async execute(params: StoreParams): Promise<StoreResult> {
     const { text, userId, scope = 'long-term', metadata = {}, categories = [] } = params;
 
     try {
+      this.debug.basic('memory_store.start', {
+        userId,
+        scope,
+        categories: categories.length,
+        ...summarizeText(text),
+      });
       const eventId = `local-${crypto.randomUUID()}`;
       const outbox = new FileOutbox(this.config.outboxDbPath);
       const auditStore = new FileAuditStore(this.config.auditStorePath);
       const adapter = new LanceDbMemoryAdapter(this.config.lancedbPath, this.config.embedding);
-      const mem0Client = new HttpMem0Client(this.config);
+      const mem0Client = new HttpMem0Client(this.config, fetch, this.debug);
       const engine = new MemorySyncEngine(outbox, auditStore, adapter, mem0Client);
       const payload = this.buildPayload({
         text,
@@ -36,11 +45,14 @@ export class MemoryStoreTool {
       const result = await engine.processEvent(eventId, payload);
 
       if (result.status === 'synced' || result.status === 'partial' || result.status === 'accepted' || result.status === 'duplicate') {
+        this.debug.basic('memory_store.done', { success: true, memoryUid: result.memory_uid, eventId, syncStatus: result.status });
         return { success: true, memoryUid: result.memory_uid, eventId, syncStatus: result.status };
       }
 
+      this.debug.basic('memory_store.done', { success: false, memoryUid: result.memory_uid, eventId, syncStatus: result.status });
       return { success: false, memoryUid: result.memory_uid, eventId, syncStatus: result.status, error: result.status };
     } catch (err: any) {
+      this.debug.error('memory_store.error', { message: err.message || 'Unknown error' });
       console.error('[memoryStore] Failed:', err);
       return { success: false, error: err.message || 'Unknown error' };
     }

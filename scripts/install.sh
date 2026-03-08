@@ -263,6 +263,8 @@ try {
         AUTO_CAPTURE_SCOPE="long-term"
         AUTO_CAPTURE_REQUIRE_REPLY="true"
         AUTO_CAPTURE_MAX_CHARS=2000
+        DEBUG_MODE="basic"
+        DEBUG_LOG_DIR=""
 
         if ask_yes_no "  Enable auto capture?" "n"; then
             AUTO_CAPTURE_ENABLED="true"
@@ -282,6 +284,32 @@ try {
             echo "  ✓ Auto capture disabled"
         fi
 
+        echo ""
+        echo "─── Debug Logging ────────────────────────────────────────"
+        echo ""
+        echo "Choose the debug logging level for troubleshooting memory flows."
+        ask_choice "  Debug mode:" \
+            "basic (recommended)" \
+            "off" \
+            "verbose" \
+            "verbose + file"
+        case $? in
+            0)
+                DEBUG_MODE="basic"
+                ;;
+            1)
+                DEBUG_MODE="off"
+                ;;
+            2)
+                DEBUG_MODE="verbose"
+                ;;
+            3)
+                DEBUG_MODE="verbose"
+                DEBUG_LOG_DIR=$(ask_input "  Debug log directory" "~/.openclaw/workspace/logs/openclaw-mem0-lancedb")
+                ;;
+        esac
+        echo "  ✓ Debug mode set to ${DEBUG_MODE}${DEBUG_LOG_DIR:+ (logDir=${DEBUG_LOG_DIR})}"
+
         # ─── Write configuration ────────────────────────────────────
         echo ""
         echo "─── Writing Configuration ────────────────────────────────"
@@ -297,6 +325,9 @@ try {
   },
   "outboxDbPath": "${HOME}/.openclaw/workspace/data/memory_outbox.db",
   "auditStorePath": "${HOME}/.openclaw/workspace/data/memory_audit/memory_records.jsonl",
+  "debug": {
+    "mode": "${DEBUG_MODE}"$(if [ -n "${DEBUG_LOG_DIR}" ]; then printf ',\n    "logDir": "%s"' "${DEBUG_LOG_DIR}"; fi)
+  },
   "autoRecall": {
     "enabled": ${AUTO_RECALL_ENABLED},
     "topK": ${AUTO_RECALL_TOPK},

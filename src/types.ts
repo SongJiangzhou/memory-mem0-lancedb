@@ -48,6 +48,7 @@ export interface PluginConfig {
   autoCapture: AutoCaptureConfig;
   embedding: EmbeddingConfig;
   embeddingMigration?: EmbeddingMigrationConfig;
+  debug?: DebugConfig;
 }
 
 export interface EmbeddingConfig {
@@ -70,6 +71,13 @@ export interface EmbeddingMigrationConfig {
   enabled: boolean;
   intervalMs: number;
   batchSize: number;
+}
+
+export type DebugMode = 'off' | 'basic' | 'verbose';
+
+export interface DebugConfig {
+  mode: DebugMode;
+  logDir?: string;
 }
 
 export interface AutoRecallConfig {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { PluginDebugLogger } from '../../src/debug/logger';
 import { buildAutoRecallBlock, runAutoRecall } from '../../src/recall/auto';
 import type { AutoRecallConfig, MemoryRecord } from '../../src/types';
 
@@ -74,4 +75,25 @@ test('runAutoRecall returns empty string when search result is empty', async () 
   });
 
   assert.equal(result, '');
+});
+
+test('runAutoRecall emits debug events with hit summaries', async () => {
+  const messages: string[] = [];
+  const debug = new PluginDebugLogger(
+    { mode: 'verbose' },
+    { info: (msg: string) => messages.push(msg), warn: (msg: string) => messages.push(msg), error: (msg: string) => messages.push(msg) },
+  );
+
+  await runAutoRecall({
+    query: 'English replies',
+    userId: 'user-1',
+    config: buildConfig(),
+    debug,
+    search: async () => ({ memories: [buildMemory('User preference: reply in English')], source: 'lancedb' }),
+  });
+
+  const output = messages.join('\n');
+  assert.match(output, /auto_recall\.start/);
+  assert.match(output, /auto_recall\.done/);
+  assert.match(output, /reply in English/);
 });
