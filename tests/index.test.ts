@@ -104,6 +104,21 @@ test('register does not throw when auto-recall is enabled but no hook api exists
   });
 });
 
+test('register logs plugin version to host logger', async () => {
+  const messages: string[] = [];
+
+  register({
+    registerTool() {},
+    logger: {
+      info(msg: string) {
+        messages.push(msg);
+      },
+    },
+  } as any);
+
+  assert.ok(messages.some((msg) => msg.includes('v0.1.0')));
+});
+
 test('before_prompt_build auto-recall hook returns prependContext when memories are found', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
 

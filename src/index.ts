@@ -36,6 +36,8 @@ type OpenClawApi = {
   on?: (event: string, handler: (...args: any[]) => any, opts?: any) => void;
 };
 
+const PLUGIN_VERSION = readPluginVersion();
+
 export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
   const mem0 = resolveMem0Config(raw);
 
@@ -407,7 +409,18 @@ export default function register(api: OpenClawApi) {
     }, { name: 'mem0-auto-capture' });
   }
 
-  api.logger?.info?.('[openclaw-mem0-lancedb] registered');
+  api.logger?.info?.(`[openclaw-mem0-lancedb] registered v${PLUGIN_VERSION}`);
+}
+
+function readPluginVersion(): string {
+  try {
+    const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json');
+    const raw = fs.readFileSync(packageJsonPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { version?: string };
+    return parsed.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function pendingCapturePath(sessionKey: string): string {
