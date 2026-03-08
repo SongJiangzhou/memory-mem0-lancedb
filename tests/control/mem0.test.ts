@@ -208,6 +208,77 @@ test('http mem0 client submits capture payload with messages', async () => {
   assert.equal(result.status, 'submitted');
   assert.match(capturedBody, /"messages"/);
   assert.match(capturedBody, /Please reply in English from now on/);
+  assert.match(capturedBody, /"async_mode":false/);
+});
+
+test('http mem0 client maps direct capture event array objects with data.memory', async () => {
+  const fetchStub = (async () => ({
+    ok: true,
+    json: async () => ([
+      {
+        id: 'mem_evt_1',
+        event: 'ADD',
+        data: {
+          memory: 'User works at a technology company in office zone A',
+        },
+      },
+    ]),
+  })) as unknown as typeof fetch;
+  const client = new HttpMem0Client(buildConfig(), fetchStub);
+  const payload = buildAutoCapturePayload({
+    userId: 'user-1',
+    latestUserMessage: 'I work at a technology company in office zone A',
+    latestAssistantMessage: 'Noted.',
+    config: {
+      enabled: true,
+      scope: 'long-term',
+      requireAssistantReply: true,
+      maxCharsPerMessage: 2000,
+    },
+  });
+
+  const result = await client.captureTurn(payload!);
+
+  assert.equal(result.status, 'submitted');
+  if (result.status !== 'submitted') {
+    return;
+  }
+  assert.equal(result.extractedMemories?.length, 1);
+  assert.equal(result.extractedMemories?.[0]?.text, 'User works at a technology company in office zone A');
+});
+
+test('http mem0 client keeps event id when capture returns queued event array', async () => {
+  const fetchStub = (async () => ({
+    ok: true,
+    json: async () => ([
+      {
+        message: 'Memory processing has been queued for background execution',
+        status: 'PENDING',
+        event_id: 'evt-queued-1',
+      },
+    ]),
+  })) as unknown as typeof fetch;
+  const client = new HttpMem0Client(buildConfig(), fetchStub);
+  const payload = buildAutoCapturePayload({
+    userId: 'user-1',
+    latestUserMessage: 'I work at a technology company in office zone A',
+    latestAssistantMessage: 'Noted.',
+    config: {
+      enabled: true,
+      scope: 'long-term',
+      requireAssistantReply: true,
+      maxCharsPerMessage: 2000,
+    },
+  });
+
+  const result = await client.captureTurn(payload!);
+
+  assert.equal(result.status, 'submitted');
+  if (result.status !== 'submitted') {
+    return;
+  }
+  assert.equal(result.event_id, 'evt-queued-1');
+  assert.equal(result.extractedMemories, undefined);
 });
 
 test('http mem0 client fetches extracted memories for a confirmed capture event', async () => {

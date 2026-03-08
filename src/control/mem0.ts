@@ -114,6 +114,7 @@ export class HttpMem0Client implements Mem0Client {
           messages: payload.messages,
           user_id: payload.userId,
           run_id: payload.runId || undefined,
+          async_mode: false,
           metadata: {
             idempotency_key: payload.idempotencyKey,
             scope: payload.scope,
@@ -138,11 +139,25 @@ export class HttpMem0Client implements Mem0Client {
       const extractedMemories: Mem0ExtractedMemory[] = data
         .map((item: any) => ({
           id: item.id || null,
-          text: item.memory || item.text || '',
-          categories: Array.isArray(item.categories) ? item.categories : [],
-          hash: item.hash || null,
+          text: item.memory || item.text || item.data?.memory || item.data?.text || '',
+          categories: Array.isArray(item.categories)
+            ? item.categories
+            : Array.isArray(item.data?.categories)
+              ? item.data.categories
+              : [],
+          hash: item.hash || item.data?.hash || null,
         }))
         .filter((m: Mem0ExtractedMemory) => Boolean(m.text));
+      const queuedEventId = data.find((item: any) => typeof item?.event_id === 'string' && item.event_id)?.event_id || null;
+      if (extractedMemories.length === 0 && queuedEventId) {
+        this.debug?.basic('mem0.capture.submitted', { status: response.status, eventId: queuedEventId, mode: 'event_array' });
+        return {
+          status: 'submitted',
+          mem0_id: null,
+          event_id: queuedEventId,
+          hash: null,
+        };
+      }
       this.debug?.basic('mem0.capture.submitted', { status: response.status, extractedCount: extractedMemories.length, mode: 'direct' });
       return { status: 'submitted', mem0_id: null, event_id: null, hash: null, extractedMemories };
     }
@@ -170,7 +185,7 @@ export class HttpMem0Client implements Mem0Client {
       let response;
       try {
         this.debug?.verbose('mem0.event.poll', { eventId, attempt: attempt + 1, attempts });
-        response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/events/${eventId}`, {
+        response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/event/${eventId}/`, {
           method: 'GET',
           headers: buildMem0Headers(this.config),
         });

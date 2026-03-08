@@ -174,7 +174,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
         };
       }
 
-      if (url.endsWith('/v1/events/evt-capture')) {
+      if (url.endsWith('/v1/event/evt-capture/')) {
         return {
           ok: true,
           json: async () => ({ status: 'completed' }),
@@ -311,6 +311,128 @@ test('auto-capture hook strips injected recall blocks before sanitization', asyn
     const userContent = messages?.find((m) => m.role === 'user')?.content ?? '';
     assert.ok(!userContent.includes('<recall>'), 'injected block should be stripped from captured text');
     assert.ok(userContent.includes('Please reply in English'), 'actual user intent should be preserved');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('auto-capture hook strips host metadata and reply markers before submission', async () => {
+  const hooks: Array<{ name: string; handler: Function }> = [];
+
+  register({
+    pluginConfig: {
+      lancedbPath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'lancedb'),
+      auditStorePath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'audit', 'memory_records.jsonl'),
+      outboxDbPath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'outbox.json'),
+      mem0: { mode: 'remote', baseUrl: 'https://api.mem0.ai', apiKey: 'test-key' },
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+      autoCapture: { enabled: true, scope: 'long-term', requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    },
+    registerTool() {},
+    registerHook(name: string, handler: Function) {
+      hooks.push({ name, handler });
+    },
+  } as any);
+
+  const hook = hooks.find((entry) => entry.name === 'agent_end');
+  assert.ok(hook);
+
+  let capturedPayload: unknown = null;
+  const originalFetch = global.fetch;
+  global.fetch = (async (url: string, init: any) => {
+    if (url.includes('/v1/memories/') && init?.method === 'POST') {
+      capturedPayload = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ event_id: 'evt-x' }) };
+    }
+    return { ok: true, json: async () => ({ status: 'completed', items: [] }) };
+  }) as typeof fetch;
+
+  try {
+    await hook.handler(
+      {
+        messages: [
+          {
+            role: 'user',
+            content:
+              'Conversation info (untrusted metadata):\n***REMOVED***\n{"message_id":"1"}\n***REMOVED***\n\n我在一家科技公司上班，办公地点在某园区A区',
+          },
+          {
+            role: 'assistant',
+            content: '[[reply_to_current]] 记住了。\n\n你在一家科技公司上班，办公地点在某园区A区。',
+          },
+        ],
+        success: true,
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    assert.ok(capturedPayload !== null, 'expected capture payload to be submitted');
+    const messages = (capturedPayload as any)?.messages as Array<{ role: string; content: string }>;
+    assert.deepEqual(messages, [
+      { role: 'user', content: '我在一家科技公司上班，办公地点在某园区A区' },
+    ]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('auto-capture logs empty extraction instead of unavailable when direct response has no memories', async () => {
+  const hooks: Array<{ name: string; handler: Function }> = [];
+  const logs: string[] = [];
+  const originalFetch = global.fetch;
+
+  try {
+    global.fetch = (async (url: string, init: any) => {
+      if (url.includes('/v1/memories/') && init?.method === 'POST') {
+        return { ok: true, json: async () => [] };
+      }
+      throw new Error(`unexpected fetch url: ${url}`);
+    }) as typeof fetch;
+
+    register({
+      pluginConfig: {
+        lancedbPath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'lancedb'),
+        auditStorePath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'audit', 'memory_records.jsonl'),
+        outboxDbPath: join(mkdtempSync(join(tmpdir(), 'oc-test-')), 'outbox.json'),
+        mem0: { mode: 'remote', baseUrl: 'https://api.mem0.ai', apiKey: 'test-key' },
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+        autoCapture: { enabled: true, scope: 'long-term', requireAssistantReply: true, maxCharsPerMessage: 2000 },
+        debug: { mode: 'basic' as const },
+      },
+      logger: {
+        info(msg: string) {
+          logs.push(msg);
+        },
+        warn(msg: string) {
+          logs.push(msg);
+        },
+        error(msg: string) {
+          logs.push(msg);
+        },
+      },
+      registerTool() {},
+      registerHook(name: string, handler: Function) {
+        hooks.push({ name, handler });
+      },
+    } as any);
+
+    const hook = hooks.find((entry) => entry.name === 'agent_end');
+    assert.ok(hook);
+
+    await hook.handler(
+      {
+        messages: [
+          { role: 'user', content: 'I work at a technology company in office zone A' },
+          { role: 'assistant', content: 'Noted. You work at a technology company in office zone A.' },
+        ],
+        success: true,
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    const output = logs.join('\n');
+    assert.match(output, /auto_capture\.empty/);
+    assert.doesNotMatch(output, /auto_capture\.unavailable/);
   } finally {
     global.fetch = originalFetch;
   }
