@@ -1,4 +1,7 @@
-import { EmbeddingConfig } from '../types';
+import { embed } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import type { EmbeddingConfig } from '../types';
 
 export const FAKE_EMBEDDING_DIM = 16;
 
@@ -12,20 +15,42 @@ export async function embedText(text: string, cfg?: EmbeddingConfig): Promise<nu
     return fakeEmbedText(normalized);
   }
 
+  const model = resolveModel(cfg);
   try {
-    if (cfg.provider === 'openai') {
-      return await fetchOpenAiEmbedding(normalized, cfg);
-    } else if (cfg.provider === 'gemini') {
-      return await fetchGeminiEmbedding(normalized, cfg);
-    } else if (cfg.provider === 'ollama') {
-      return await fetchOllamaEmbedding(normalized, cfg);
-    }
+    const { embedding } = await embed({ model, value: normalized });
+    return embedding;
   } catch (err) {
     console.error(`[embedder] Failed to fetch ${cfg.provider} embedding:`, err);
     throw err;
   }
-  
-  return fakeEmbedText(normalized);
+}
+
+function resolveModel(cfg: EmbeddingConfig) {
+  switch (cfg.provider) {
+    case 'gemini': {
+      const google = createGoogleGenerativeAI({
+        apiKey: cfg.apiKey,
+        baseURL: cfg.baseUrl || undefined,
+      });
+      return google.embeddingModel(cfg.model || 'text-embedding-004');
+    }
+    case 'openai': {
+      const openai = createOpenAI({
+        apiKey: cfg.apiKey,
+        baseURL: cfg.baseUrl || undefined,
+      });
+      return openai.embeddingModel(cfg.model || 'text-embedding-3-small');
+    }
+    case 'ollama': {
+      const ollama = createOpenAI({
+        apiKey: 'ollama',
+        baseURL: cfg.baseUrl.replace(/\/$/, '') + '/v1',
+      });
+      return ollama.embeddingModel(cfg.model || 'nomic-embed-text');
+    }
+    default:
+      throw new Error(`Unknown embedding provider: ${(cfg as any).provider}`);
+  }
 }
 
 function fakeEmbedText(normalized: string): number[] {
@@ -43,53 +68,4 @@ function fakeEmbedText(normalized: string): number[] {
   }
 
   return vector.map((value) => value / norm);
-}
-
-async function fetchOpenAiEmbedding(text: string, cfg: EmbeddingConfig): Promise<number[]> {
-  const url = `${cfg.baseUrl.replace(/\/$/, '')}/v1/embeddings`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${cfg.apiKey}`
-    },
-    body: JSON.stringify({
-      model: cfg.model || 'text-embedding-3-small',
-      input: text
-    })
-  });
-  if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}: ${await res.text()}`);
-  const data = await res.json() as any;
-  return data.data[0].embedding;
-}
-
-async function fetchGeminiEmbedding(text: string, cfg: EmbeddingConfig): Promise<number[]> {
-  const model = cfg.model || 'models/text-embedding-004';
-  const url = `${cfg.baseUrl.replace(/\/$/, '')}/v1beta/${model}:embedContent?key=${cfg.apiKey}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: model,
-      content: { parts: [{ text }] }
-    })
-  });
-  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}: ${await res.text()}`);
-  const data = await res.json() as any;
-  return data.embedding.values;
-}
-
-async function fetchOllamaEmbedding(text: string, cfg: EmbeddingConfig): Promise<number[]> {
-  const url = `${cfg.baseUrl.replace(/\/$/, '')}/api/embeddings`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: cfg.model || 'nomic-embed-text',
-      prompt: text
-    })
-  });
-  if (!res.ok) throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`);
-  const data = await res.json() as any;
-  return data.embedding;
 }

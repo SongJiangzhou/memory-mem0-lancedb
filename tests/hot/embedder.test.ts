@@ -22,3 +22,18 @@ test('embedText does not collapse all inputs to the same vector', async () => {
 
   assert.notDeepEqual(first, second);
 });
+
+test('embedText throws for unknown provider', async () => {
+  const cfg = {
+    provider: 'unknown' as any,
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    dimension: 16,
+  };
+
+  await assert.rejects(
+    () => embedText('hello', cfg),
+    /Unknown embedding provider/,
+  );
+});
