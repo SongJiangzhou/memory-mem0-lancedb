@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -59,19 +59,19 @@ test('migration worker moves legacy rows into the current-dimension table', asyn
     await worker.runOnce();
 
     const currentTable = await openMemoryTable(dir, 16);
-    const refreshedLegacyTable = await openMemoryTable(dir, 768);
     const migratedRows = await currentTable.query().where("memory_uid = 'memory-1'").toArray();
-    const legacyRows = await refreshedLegacyTable.query().where("memory_uid = 'memory-1'").toArray();
+    const db = await lancedb.connect(dir);
+    const tableNames = await db.tableNames();
 
     assert.equal(migratedRows.length, 1);
     assert.equal(migratedRows[0]?.vector.length, 16);
-    assert.equal(legacyRows.length, 0);
+    assert.equal(tableNames.includes('memory_records_d768'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('migration worker drops a legacy table after all rows are migrated out', async () => {
+test('migration worker renames a fully migrated legacy table to .bak and removes the .lance directory', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -92,6 +92,41 @@ test('migration worker drops a legacy table after all rows are migrated out', as
 
     assert.equal(tableNames.includes('memory_records_d768'), false);
     assert.equal(tableNames.includes('memory_records'), true);
+    assert.equal(existsSync(join(dir, 'memory_records_d768.lance')), false);
+    assert.equal(existsSync(join(dir, 'memory_records_d768.bak')), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('migration worker migrates the legacy main table into the current embedding dimension and backs it up', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyMainTable = await openMemoryTable(dir, 16);
+    await legacyMainTable.add([makeLegacyRow({ vector: new Array<number>(16).fill(0) })]);
+
+    const worker = new EmbeddingMigrationWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 768 },
+    });
+
+    await worker.runOnce();
+
+    const currentTable = await openMemoryTable(dir, 768);
+    const migratedRows = await currentTable.query().where("memory_uid = 'memory-1'").toArray();
+    const db = await lancedb.connect(dir);
+    const tableNames = await db.tableNames();
+
+    assert.equal(migratedRows.length, 1);
+    assert.equal(migratedRows[0]?.vector.length, 768);
+    assert.equal(tableNames.includes('memory_records'), false);
+    assert.equal(tableNames.includes('memory_records_d768'), true);
+    assert.equal(existsSync(join(dir, 'memory_records.lance')), false);
+    assert.equal(existsSync(join(dir, 'memory_records.bak')), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -120,9 +155,10 @@ test('migration worker keeps legacy rows when destination upsert fails', async (
     await worker.runOnce();
 
     const currentTable = await openMemoryTable(dir, 16);
-    const refreshedLegacyTable = await openMemoryTable(dir, 768);
     const migratedRows = await currentTable.query().where("memory_uid = 'memory-1'").toArray();
-    const legacyRows = await refreshedLegacyTable.query().where("memory_uid = 'memory-1'").toArray();
+    const db = await lancedb.connect(dir);
+    const legacyTableAfter = await db.openTable('memory_records_d768');
+    const legacyRows = await legacyTableAfter.query().where("memory_uid = 'memory-1'").toArray();
 
     assert.equal(migratedRows.length, 0);
     assert.equal(legacyRows.length, 1);

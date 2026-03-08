@@ -1,5 +1,6 @@
 import { openMemoryTable } from '../db/table';
-import * as lancedb from '@lancedb/lancedb';
+import { existsSync, renameSync, rmSync } from 'node:fs';
+import * as path from 'node:path';
 import type { PluginDebugLogger } from '../debug/logger';
 import { embedText } from './embedder';
 import { discoverMemoryTables, resolveLanceDbPath } from './table-discovery';
@@ -126,21 +127,34 @@ export class EmbeddingMigrationWorker {
         }
       }
 
-      await this.dropLegacyTableIfEmpty(tableInfo.name, sourceTable);
+      await this.backupLegacyTableIfEmpty(tableInfo.name, sourceTable);
     }
 
     this.debug?.basic('embedding_migration.done', { migrated, failed, targetDimension: currentDim });
   }
 
-  private async dropLegacyTableIfEmpty(tableName: string, sourceTable: Awaited<ReturnType<typeof openMemoryTable>>): Promise<void> {
+  private async backupLegacyTableIfEmpty(tableName: string, sourceTable: Awaited<ReturnType<typeof openMemoryTable>>): Promise<void> {
     const rowCount = await sourceTable.countRows();
     if (rowCount > 0) {
       return;
     }
 
-    const db = await lancedb.connect(resolveLanceDbPath(this.config.lancedbPath));
-    await db.dropTable(tableName);
-    this.debug?.basic('embedding_migration.drop_table', { tableName });
+    sourceTable.close();
+
+    const dbPath = resolveLanceDbPath(this.config.lancedbPath);
+    const lancePath = path.join(dbPath, `${tableName}.lance`);
+    const backupPath = path.join(dbPath, `${tableName}.bak`);
+
+    if (!existsSync(lancePath)) {
+      return;
+    }
+
+    if (existsSync(backupPath)) {
+      rmSync(backupPath, { recursive: true, force: true });
+    }
+
+    renameSync(lancePath, backupPath);
+    this.debug?.basic('embedding_migration.backup_table', { tableName, backupPath });
   }
 
   private shouldMigrateRow(row: any): boolean {
