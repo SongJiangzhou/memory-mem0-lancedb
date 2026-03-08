@@ -45,6 +45,7 @@ export interface PluginConfig {
   autoRecall: AutoRecallConfig;
   autoCapture: AutoCaptureConfig;
   embedding: EmbeddingConfig;
+  embeddingMigration?: EmbeddingMigrationConfig;
 }
 
 export interface EmbeddingConfig {
@@ -53,6 +54,12 @@ export interface EmbeddingConfig {
   apiKey: string;
   model: string;
   dimension: number;
+}
+
+export interface EmbeddingMigrationConfig {
+  enabled: boolean;
+  intervalMs: number;
+  batchSize: number;
 }
 
 export interface AutoRecallConfig {

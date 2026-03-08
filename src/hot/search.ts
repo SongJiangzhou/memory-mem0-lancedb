@@ -1,9 +1,7 @@
 import { embedText } from './embedder';
+import { discoverMemoryTables } from './table-discovery';
 import { openMemoryTable } from '../db/table';
 import { getMemoryTableName } from '../db/schema';
-import * as lancedb from '@lancedb/lancedb';
-import * as path from 'path';
-import * as os from 'os';
 import type { PluginConfig, SearchParams, SearchResult } from '../types';
 
 const RRF_K = 60;
@@ -23,7 +21,7 @@ export class HotMemorySearch {
     const whereClause = this.buildWhereClause(userId, filters);
     
     // 发现所有可用的记忆表
-    const allTables = await this.discoverTables();
+    const allTables = await discoverMemoryTables(this.config.lancedbPath, currentDim);
     const allRows: any[] = [];
     
     // 对每个表进行搜索
@@ -87,38 +85,6 @@ export class HotMemorySearch {
       memories: finalRows.map((row) => this.toMemoryRecord(row, row._sourceDim || currentDim)),
       source: 'lancedb',
     };
-  }
-  
-  private async discoverTables(): Promise<Array<{ dimension: number; name: string }>> {
-    const resolvedPath = this.config.lancedbPath.startsWith('~/')
-      ? path.join(os.homedir(), this.config.lancedbPath.slice(2))
-      : this.config.lancedbPath;
-    
-    const db = await lancedb.connect(resolvedPath);
-    const tableNames = await db.tableNames();
-    
-    const tables: Array<{ dimension: number; name: string }> = [];
-    
-    for (const name of tableNames) {
-      if (name === 'memory_records') {
-        tables.push({ dimension: 16, name });
-      } else if (name.startsWith('memory_records_d')) {
-        const dimMatch = name.match(/memory_records_d(\d+)/);
-        if (dimMatch) {
-          tables.push({ dimension: parseInt(dimMatch[1], 10), name });
-        }
-      }
-    }
-    
-    // 按维度排序，当前维度的表优先
-    const currentDim = this.config.embedding?.dimension || 16;
-    tables.sort((a, b) => {
-      if (a.dimension === currentDim) return -1;
-      if (b.dimension === currentDim) return 1;
-      return b.dimension - a.dimension; // 高维度优先
-    });
-    
-    return tables;
   }
   
   private deduplicateByUid(rows: any[]): any[] {

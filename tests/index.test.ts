@@ -5,7 +5,29 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { FileAuditStore } from '../src/audit/store';
-import register from '../src/index';
+import register, { resolveConfig } from '../src/index';
+
+test('resolveConfig sets embedding migration defaults', async () => {
+  const config = resolveConfig();
+
+  assert.equal(config.embeddingMigration?.enabled, true);
+  assert.equal(config.embeddingMigration?.intervalMs, 15 * 60 * 1000);
+  assert.equal(config.embeddingMigration?.batchSize, 20);
+});
+
+test('resolveConfig respects embedding migration overrides', async () => {
+  const config = resolveConfig({
+    embeddingMigration: {
+      enabled: false,
+      intervalMs: 30_000,
+      batchSize: 5,
+    },
+  } as any);
+
+  assert.equal(config.embeddingMigration?.enabled, false);
+  assert.equal(config.embeddingMigration?.intervalMs, 30_000);
+  assert.equal(config.embeddingMigration?.batchSize, 5);
+});
 
 test('register installs auto-recall hook when enabled and hook api exists', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
@@ -43,8 +65,8 @@ test('register installs auto-capture hook when enabled and hook api exists', asy
 
   register({
     pluginConfig: {
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
       autoCapture: {
-  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
         enabled: true,
         scope: 'long-term',
         requireAssistantReply: true,
@@ -109,8 +131,8 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
         outboxDbPath: join(dir, 'outbox.json'),
         mem0BaseUrl: 'https://api.mem0.ai',
         mem0ApiKey: 'test-key',
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
         autoCapture: {
-  embedding: { provider: "fake" as const, baseUrl: "", apiKey: "", model: "", dimension: 16 },
           enabled: true,
           scope: 'long-term',
           requireAssistantReply: true,

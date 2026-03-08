@@ -8,6 +8,7 @@ import { syncCapturedMemories } from './capture/sync';
 import { HttpMem0Client } from './control/mem0';
 import { runAutoRecall } from './recall/auto';
 import { Mem0Poller } from './bridge/poller';
+import { EmbeddingMigrationWorker } from './hot/migration-worker';
 import type { PluginConfig } from './types';
 
 function textResult(summary: string, details: any) {
@@ -29,7 +30,7 @@ type OpenClawApi = {
   registerHook?: (events: string | string[], handler: (...args: any[]) => any, opts?: any) => void;
 };
 
-function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
+export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
   return {
     lancedbPath: raw?.lancedbPath || '~/.openclaw/workspace/data/memory_lancedb',
     mem0BaseUrl: raw?.mem0BaseUrl || 'https://api.mem0.ai',
@@ -49,6 +50,11 @@ function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConf
       maxCharsPerMessage: raw?.autoCapture?.maxCharsPerMessage || 2000,
     },
     embedding: resolveEmbeddingConfig(raw, apiConfig),
+    embeddingMigration: {
+      enabled: raw?.embeddingMigration?.enabled ?? true,
+      intervalMs: raw?.embeddingMigration?.intervalMs || 15 * 60 * 1000,
+      batchSize: raw?.embeddingMigration?.batchSize || 20,
+    },
   };
 }
 
@@ -96,6 +102,8 @@ export default function register(api: OpenClawApi) {
 
   const poller = new Mem0Poller(cfg);
   poller.start();
+  const migrationWorker = new EmbeddingMigrationWorker(cfg);
+  migrationWorker.start();
 
   // memory slot 主工具：完全走新机制（不再桥接 memory-core）
   api.registerTool({
