@@ -9,6 +9,16 @@ const MMR_LAMBDA = 0.5;
 const SIMILARITY_THRESHOLD = 0.85;
 const EXACT_QUERY_MATCH_BOOST = 1.0;
 const STRUCTURED_TOKEN_BOOST = 0.75;
+const PREFERENCE_INTENT_BOOST = 0.9;
+const DOMAIN_MATCH_BOOST = 0.6;
+const PROFILE_INTENT_BOOST = 0.75;
+const RECENCY_INTENT_BOOST = 0.4;
+const METADATA_NOISE_PENALTY = 1.25;
+const CREDENTIAL_TEST_NOISE_PENALTY = 1.0;
+const SYSTEM_TRACE_NOISE_PENALTY = 0.75;
+
+type QueryIntent = 'preference' | 'profile' | 'credential' | 'recency' | 'generic';
+type QueryDomain = 'game' | 'food' | 'work' | 'travel' | 'generic';
 
 export class HotMemorySearch {
   private readonly config: PluginConfig;
@@ -32,14 +42,14 @@ export class HotMemorySearch {
       
       // 当前维度的表：使用向量+FTS混合搜索
       if (dimension === currentDim) {
-        const fetchK = topK * 3;
+        const fetchK = Math.max(topK * 6, 24);
         const ftsRows = await this.searchFts(tbl, query, whereClause, fetchK);
         const vectorRows = await this.searchVector(tbl, query, whereClause, fetchK);
         const merged = this.mergeRrf(ftsRows, vectorRows, fetchK);
         allRows.push(...merged.map(r => ({ ...r, _sourceDim: dimension })));
       } else {
         // 其他维度的表：仅使用FTS文本搜索（向量维度不匹配）
-        const fetchK = topK * 2;
+        const fetchK = Math.max(topK * 4, 16);
         const ftsRows = await this.searchFts(tbl, query, whereClause, fetchK);
         // 为FTS结果赋予基础分数
         const scoredFtsRows = ftsRows.map((r, idx) => ({
@@ -172,6 +182,8 @@ export class HotMemorySearch {
     const now = Date.now();
     const normalizedQuery = this.normalizeText(query);
     const tokenQuery = this.looksLikeTokenRetrievalQuery(normalizedQuery);
+    const queryIntent = this.classifyQueryIntent(normalizedQuery);
+    const queryDomain = this.classifyQueryDomain(normalizedQuery);
 
     return rows.map((r) => {
       let ageMs = now - new Date(r.ts_event).getTime();
@@ -189,9 +201,12 @@ export class HotMemorySearch {
         lexicalBoost += STRUCTURED_TOKEN_BOOST;
       }
 
+      const intentBoost = this.computeIntentBoost(r, queryIntent, queryDomain, decay);
+      const noisePenalty = this.computeNoisePenalty(r, normalizedQuery, tokenQuery);
+
       return {
         ...r,
-        __final_score: baseScore * (0.8 + 0.2 * decay) + lexicalBoost,
+        __final_score: baseScore * (0.8 + 0.2 * decay) + lexicalBoost + intentBoost - noisePenalty,
       };
     }).sort((a, b) => b.__final_score - a.__final_score);
   }
@@ -206,6 +221,157 @@ export class HotMemorySearch {
 
   private containsStructuredToken(text: string): boolean {
     return /[a-z0-9]+(?:-[a-z0-9]+){2,}/i.test(text);
+  }
+
+  private classifyQueryIntent(query: string): QueryIntent {
+    if (this.looksLikeTokenRetrievalQuery(query)) {
+      return 'credential';
+    }
+    if (/最近|刚刚|最新|today|yesterday|recent|latest/.test(query)) {
+      return 'recency';
+    }
+    if (/喜欢|偏好|爱好|哪类|what kind|which kind|like|prefer|favorite/.test(query)) {
+      return 'preference';
+    }
+    if (/我是谁|我在哪|我住哪|我在哪上班|我做什么|who am i|where do i|what do i do/.test(query)) {
+      return 'profile';
+    }
+    return 'generic';
+  }
+
+  private classifyQueryDomain(query: string): QueryDomain {
+    if (/游戏|game|games|nintendo|mario|zelda/.test(query)) {
+      return 'game';
+    }
+    if (/吃|食物|餐厅|food|eat|drink|restaurant/.test(query)) {
+      return 'food';
+    }
+    if (/工作|上班|公司|职业|work|job|company|office/.test(query)) {
+      return 'work';
+    }
+    if (/出差|旅行|旅游|travel|trip/.test(query)) {
+      return 'travel';
+    }
+    return 'generic';
+  }
+
+  private computeIntentBoost(row: any, queryIntent: QueryIntent, queryDomain: QueryDomain, decay: number): number {
+    const memoryType = this.inferMemoryType(row);
+    const memoryDomains = this.inferMemoryDomains(row);
+    let boost = 0;
+
+    if (queryIntent === 'preference' && memoryType === 'preference') {
+      boost += PREFERENCE_INTENT_BOOST;
+      if (queryDomain !== 'generic' && memoryDomains.includes(queryDomain)) {
+        boost += DOMAIN_MATCH_BOOST;
+      }
+    }
+
+    if (queryIntent === 'profile' && memoryType === 'profile') {
+      boost += PROFILE_INTENT_BOOST;
+    }
+
+    if (queryIntent === 'recency') {
+      boost += RECENCY_INTENT_BOOST * decay;
+    }
+
+    if (queryIntent === 'credential' && memoryType === 'credential') {
+      boost += STRUCTURED_TOKEN_BOOST;
+    }
+
+    return boost;
+  }
+
+  private computeNoisePenalty(row: any, normalizedQuery: string, tokenQuery: boolean): number {
+    const text = String(row?.text || '');
+    const normalizedText = this.normalizeText(text);
+    const categories = Array.isArray(row?.categories) ? row.categories.map((item: any) => this.normalizeText(String(item))) : [];
+    let penalty = 0;
+
+    if (this.isMetadataNoise(normalizedText, categories)) {
+      penalty += METADATA_NOISE_PENALTY;
+    }
+
+    if (!tokenQuery && this.isCredentialTestNoise(normalizedText, categories)) {
+      penalty += CREDENTIAL_TEST_NOISE_PENALTY;
+    }
+
+    if (this.isSystemTraceNoise(normalizedText, categories, normalizedQuery)) {
+      penalty += SYSTEM_TRACE_NOISE_PENALTY;
+    }
+
+    return penalty;
+  }
+
+  private isMetadataNoise(text: string, categories: string[]): boolean {
+    return (
+      categories.includes('metadata') ||
+      /sender \(untrusted metadata\)|client metadata payload|gateway-client|label .*username|username .*id /.test(text)
+    );
+  }
+
+  private isCredentialTestNoise(text: string, categories: string[]): boolean {
+    return (
+      categories.includes('token') ||
+      categories.includes('credential') ||
+      /\b(test|integration test|e2e)\b/.test(text) &&
+        /\b(token|password|passcode|verification code|secret|api key)\b/.test(text)
+    );
+  }
+
+  private isSystemTraceNoise(text: string, categories: string[], normalizedQuery: string): boolean {
+    if (/(capture|recall|poller|debug|sync|eventid|plugin\.register)/.test(normalizedQuery)) {
+      return false;
+    }
+
+    return (
+      categories.includes('system') ||
+      categories.includes('debug') ||
+      /\b(plugin|poller|capture|recall|debug|sync(ed)? memory|integration check)\b/.test(text)
+    );
+  }
+
+  private inferMemoryType(row: any): 'preference' | 'profile' | 'credential' | 'metadata' | 'system' | 'generic' {
+    const text = this.normalizeText(String(row?.text || ''));
+    const categories = Array.isArray(row?.categories) ? row.categories.map((item: any) => this.normalizeText(String(item))) : [];
+
+    if (categories.includes('preference') || /user likes|user prefers|用户.*喜欢|用户.*偏好/.test(text)) {
+      return 'preference';
+    }
+    if (categories.includes('profile') || /user works at|user lives in|用户.*在.*上班|用户.*住在/.test(text)) {
+      return 'profile';
+    }
+    if (categories.includes('token') || categories.includes('credential') || /\b(token|password|passcode|secret|api key)\b/.test(text)) {
+      return 'credential';
+    }
+    if (categories.includes('metadata')) {
+      return 'metadata';
+    }
+    if (categories.includes('system') || categories.includes('debug')) {
+      return 'system';
+    }
+    return 'generic';
+  }
+
+  private inferMemoryDomains(row: any): QueryDomain[] {
+    const text = this.normalizeText(String(row?.text || ''));
+    const categories = Array.isArray(row?.categories) ? row.categories.map((item: any) => this.normalizeText(String(item))) : [];
+    const domains: QueryDomain[] = [];
+
+    if (categories.includes('game') || /game|games|nintendo|mario|zelda|游戏/.test(text)) {
+      domains.push('game');
+    }
+    if (categories.includes('food') || /food|eat|drink|restaurant|吃|餐厅/.test(text)) {
+      domains.push('food');
+    }
+    if (categories.includes('work') || /work|job|company|office|上班|工作|公司/.test(text)) {
+      domains.push('work');
+    }
+    if (categories.includes('travel') || /travel|trip|出差|旅行/.test(text)) {
+      domains.push('travel');
+    }
+
+    return domains.length > 0 ? domains : ['generic'];
   }
 
   private applyMmr(rows: any[], queryVector: number[], topK: number): any[] {

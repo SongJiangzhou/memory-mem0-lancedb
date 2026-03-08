@@ -197,3 +197,86 @@ test('hot plane password-style question prefers the memory containing the exact 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('hot plane ranking penalizes metadata and test-token noise for non-credential preference queries', () => {
+  const cfg = {
+    lancedbPath: '',
+    mem0BaseUrl: '',
+    mem0ApiKey: '',
+    outboxDbPath: '',
+    auditStorePath: '',
+    autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+    autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+  };
+  const hot = new HotMemorySearch(cfg as any);
+  const now = new Date().toISOString();
+
+  const ranked = (hot as any).applyRankingAdjustments(
+    [
+      {
+        memory_uid: 'noise-metadata',
+        text: "Client metadata payload: label 'generic-client', id 'generic-client', username 'generic-client'.",
+        categories: ['metadata'],
+        ts_event: now,
+        __rrf_score: 1.2,
+      },
+      {
+        memory_uid: 'noise-token',
+        text: 'Integration test token for the local check is alpha-beta-gamma.',
+        categories: ['token'],
+        ts_event: now,
+        __rrf_score: 1.1,
+      },
+      {
+        memory_uid: 'user-preference',
+        text: 'User likes Nintendo games and Mario titles.',
+        categories: ['preference', 'game'],
+        ts_event: now,
+        __rrf_score: 0.45,
+      },
+    ],
+    'What kind of games do I like?',
+  );
+
+  assert.equal(ranked[0]?.memory_uid, 'user-preference');
+  assert.ok(ranked.findIndex((row: any) => row.memory_uid === 'noise-metadata') > 0);
+  assert.ok(ranked.findIndex((row: any) => row.memory_uid === 'noise-token') > 0);
+});
+
+test('hot plane preference intent reranking boosts preference memories for game-like queries', () => {
+  const cfg = {
+    lancedbPath: '',
+    mem0BaseUrl: '',
+    mem0ApiKey: '',
+    outboxDbPath: '',
+    auditStorePath: '',
+    autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+    autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+  };
+  const hot = new HotMemorySearch(cfg as any);
+  const now = new Date().toISOString();
+
+  const ranked = (hot as any).applyRankingAdjustments(
+    [
+      {
+        memory_uid: 'profile-work',
+        text: 'User works at a technology company and uses C++ and Python.',
+        categories: ['profile', 'work'],
+        ts_event: now,
+        __rrf_score: 1.0,
+      },
+      {
+        memory_uid: 'game-preference',
+        text: 'User likes Nintendo games, including Mario and Zelda titles.',
+        categories: ['preference', 'game'],
+        ts_event: now,
+        __rrf_score: 0.4,
+      },
+    ],
+    'What kind of games do I like?',
+  );
+
+  assert.equal(ranked[0]?.memory_uid, 'game-preference');
+});
