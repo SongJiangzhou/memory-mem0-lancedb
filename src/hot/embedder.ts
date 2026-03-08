@@ -42,6 +42,9 @@ function resolveModel(cfg: EmbeddingConfig) {
       return openai.embeddingModel(cfg.model || 'text-embedding-3-small');
     }
     case 'ollama': {
+      if (!cfg.baseUrl) {
+        throw new Error('[embedder] ollama provider requires a non-empty baseUrl');
+      }
       const ollama = createOpenAI({
         apiKey: 'ollama',
         baseURL: cfg.baseUrl.replace(/\/$/, '') + '/v1',

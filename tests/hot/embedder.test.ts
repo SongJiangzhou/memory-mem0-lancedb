@@ -37,3 +37,18 @@ test('embedText throws for unknown provider', async () => {
     /Unknown embedding provider/,
   );
 });
+
+test('embedText throws for ollama with empty baseUrl', async () => {
+  const cfg = {
+    provider: 'ollama' as const,
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    dimension: 768,
+  };
+
+  await assert.rejects(
+    () => embedText('hello', cfg),
+    /ollama provider requires a non-empty baseUrl/,
+  );
+});
