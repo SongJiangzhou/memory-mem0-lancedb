@@ -398,7 +398,11 @@ export default function register(api: OpenClawApi) {
         }
       }
 
-      debug.basic('auto_capture.unavailable', { status: submitted.status });
+      if (submitted.status === 'submitted' && submitted.extractedMemories?.length === 0) {
+        debug.basic('auto_capture.empty', { reason: 'mem0_no_extraction' });
+      } else {
+        debug.basic('auto_capture.unavailable', { status: submitted.status });
+      }
       return { submitted };
     }, { name: 'mem0-auto-capture' });
   }
@@ -460,7 +464,9 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
 function stripInjectedBlocks(text: string): string {
   return text
     .replace(/<recall[^>]*>[\s\S]*?<\/recall>/g, '')
-    .replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, ''); // legacy
+    .replace(/<relevant_memories[^>]*>[\s\S]*?<\/relevant_memories>/g, '') // legacy
+    .replace(/(?:Sender|Conversation info) \(untrusted metadata\):\n***REMOVED***\n[\s\S]*?***REMOVED***\n?/g, '')
+    .replace(/^\[[\w\s,:/+-]+\]\s*/m, ''); // strip leading timestamp e.g. [Mon 2026-03-09 01:13 GMT+8]
 }
 
 function extractTextContent(content: unknown): string {
