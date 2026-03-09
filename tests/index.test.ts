@@ -155,7 +155,7 @@ test('register includes plugin version in structured debug log file', async () =
   }
 });
 
-test('before_prompt_build injects auto-recall context when memories are found', async () => {
+test('before_prompt_build injects auto-recall into the internal prompt without surfacing it to the user', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-recall-'));
 
@@ -195,22 +195,23 @@ test('before_prompt_build injects auto-recall context when memories are found', 
     const hook = hooks.find((entry) => entry.name === 'before_prompt_build');
     assert.ok(hook);
 
+    const event = {
+      prompt: 'English',
+      messages: [
+        { role: 'user', content: 'English' },
+      ],
+    };
     const result = await hook?.handler(
-      {
-        prompt: 'English',
-        messages: [
-          { role: 'user', content: 'English' },
-        ],
-      },
+      event,
       {
         agentId: 'main',
         sessionKey: 'test-session',
       },
     );
 
-    assert.equal(typeof result, 'object');
-    assert.match(String((result as any)?.prependContext || ''), /<recall source="lancedb">/);
-    assert.match(String((result as any)?.prependContext || ''), /User prefers replies in English/);
+    assert.equal(result, null);
+    assert.match(String(event.prompt || ''), /<recall source="lancedb">/);
+    assert.match(String(event.prompt || ''), /User prefers replies in English/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -336,7 +337,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
   }
 });
 
-test('before_prompt_build surfaces pending capture notification from previous successful turn', async () => {
+test('before_prompt_build injects pending capture notification into the internal prompt without surfacing it to the user', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-note-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const originalFetch = global.fetch;
@@ -400,17 +401,18 @@ test('before_prompt_build surfaces pending capture notification from previous su
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
+    const event = {
+      prompt: '我喜欢吃什么',
+      messages: [{ role: 'user', content: '我喜欢吃什么' }],
+    };
     const result = await recallHook?.handler(
-      {
-        prompt: '我喜欢吃什么',
-        messages: [{ role: 'user', content: '我喜欢吃什么' }],
-      },
+      event,
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(typeof result, 'object');
-    assert.match(String((result as any)?.prependContext || ''), /<capture via="mem0"/);
-    assert.match(String((result as any)?.prependContext || ''), /User enjoys a certain food/);
+    assert.equal(result, null);
+    assert.match(String(event.prompt || ''), /<capture via="mem0"/);
+    assert.match(String(event.prompt || ''), /User enjoys a certain food/);
     assert.throws(() => readFileSync(pendingCapturePath('test-session'), 'utf-8'));
   } finally {
     global.fetch = originalFetch;
@@ -486,18 +488,17 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
+    const beforePromptEvent = {
+      prompt: 'hello',
+      messages: [{ role: 'user', content: 'hello' }],
+    };
     const injected = await recallHook?.handler(
-      {
-        prompt: 'hello',
-        messages: [{ role: 'user', content: 'hello' }],
-      },
+      beforePromptEvent,
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(typeof injected, 'object');
-
-    const injectedContext =
-      injected && typeof injected === 'object' && 'prependContext' in injected ? String((injected as any).prependContext || '') : '';
+    assert.equal(injected, null);
+    const injectedContext = String(beforePromptEvent.prompt || '');
 
     await captureHook?.handler(
       {
@@ -519,7 +520,7 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
   }
 });
 
-test('before_prompt_build clears pending capture notifications after surfacing them to the user', async () => {
+test('before_prompt_build clears pending capture notifications after injecting them into the internal prompt', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-silent-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const sessionKey = 'silent-session';
@@ -586,16 +587,17 @@ test('before_prompt_build clears pending capture notifications after surfacing t
 
     assert.equal(readFileSync(pendingCapturePath(sessionKey), 'utf-8').includes('User likes a dessert brand'), true);
 
+    const event = {
+      prompt: 'hello again',
+      messages: [{ role: 'user', content: 'hello again' }],
+    };
     const result = await recallHook?.handler(
-      {
-        prompt: 'hello again',
-        messages: [{ role: 'user', content: 'hello again' }],
-      },
+      event,
       { agentId: 'main', sessionKey },
     );
 
-    assert.equal(typeof result, 'object');
-    assert.match(String((result as any)?.prependContext || ''), /<capture via="mem0"/);
+    assert.equal(result, null);
+    assert.match(String(event.prompt || ''), /<capture via="mem0"/);
     assert.throws(() => readFileSync(pendingCapturePath(sessionKey), 'utf-8'));
   } finally {
     global.fetch = originalFetch;

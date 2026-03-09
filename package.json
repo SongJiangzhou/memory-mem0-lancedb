@@ -12,7 +12,7 @@
     "install-plugin": "bash scripts/install.sh",
     "install-plugin:zh": "bash scripts/install_zh.sh",
     "mem0:setup": "uv venv && uv pip install mem0ai fastapi uvicorn pydantic google-genai",
-    "mem0:start": "uv run uvicorn scripts.mem0_server:app --reload --port 8000"
+    "mem0:start": "uv run uvicorn scripts.mem0_server:app --port 8000"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.43",

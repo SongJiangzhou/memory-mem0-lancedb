@@ -109,6 +109,16 @@ def initialize_memory():
         return None
 
 
+def reset_memory():
+    global memory
+    memory = initialize_memory()
+    return memory
+
+
+def is_readonly_database_error(error: Exception) -> bool:
+    return "readonly database" in str(error).lower()
+
+
 memory = initialize_memory()
 
 class MemoryStoreRequest(BaseModel):
@@ -167,6 +177,20 @@ def store_memory(request: MemoryStoreRequest):
         )
         return result
     except Exception as e:
+        if is_readonly_database_error(e):
+            refreshed_memory = reset_memory()
+            if refreshed_memory is None:
+                raise HTTPException(status_code=500, detail="Mem0 reinitialization failed")
+            try:
+                return refreshed_memory.add(
+                    messages=request.messages,
+                    user_id=request.user_id,
+                    agent_id=request.agent_id,
+                    run_id=request.run_id,
+                    metadata=request.metadata,
+                )
+            except Exception as retry_error:
+                raise HTTPException(status_code=500, detail=str(retry_error))
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/memories/search/")

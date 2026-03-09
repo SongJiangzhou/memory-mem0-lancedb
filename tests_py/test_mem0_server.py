@@ -191,5 +191,44 @@ class Mem0ServerConfigTests(unittest.TestCase):
         self.assertEqual(fake_memory.kwargs["metadata"], {"scope": "long-term"})
         self.assertNotIn("filters", fake_memory.kwargs)
 
+    def test_store_memory_retries_after_readonly_database_error(self) -> None:
+        original_memory = mem0_server.memory
+        original_initialize_memory = mem0_server.initialize_memory
+
+        class ReadonlyMemory:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def add(self, **kwargs):
+                self.calls += 1
+                raise Exception("attempt to write a readonly database")
+
+        class FreshMemory:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            def add(self, **kwargs):
+                self.kwargs = kwargs
+                return {"results": [{"id": "m2", "memory": "Recovered memory"}]}
+
+        readonly_memory = ReadonlyMemory()
+        fresh_memory = FreshMemory()
+        mem0_server.memory = readonly_memory
+        mem0_server.initialize_memory = lambda: fresh_memory
+        try:
+            request = mem0_server.MemoryStoreRequest(
+                messages=[{"role": "user", "content": "Recovered memory"}],
+                user_id="default",
+                metadata={"scope": "long-term"},
+            )
+            result = mem0_server.store_memory(request)
+            self.assertEqual(result, {"results": [{"id": "m2", "memory": "Recovered memory"}]})
+            self.assertEqual(readonly_memory.calls, 1)
+            self.assertEqual(fresh_memory.kwargs["user_id"], "default")
+            self.assertEqual(mem0_server.memory, fresh_memory)
+        finally:
+            mem0_server.memory = original_memory
+            mem0_server.initialize_memory = original_initialize_memory
+
 if __name__ == "__main__":
     unittest.main()
