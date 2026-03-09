@@ -18,6 +18,16 @@ const RECENCY_INTENT_BOOST = 0.4;
 const METADATA_NOISE_PENALTY = 1.25;
 const CREDENTIAL_TEST_NOISE_PENALTY = 1.0;
 const SYSTEM_TRACE_NOISE_PENALTY = 0.75;
+const MIN_FINAL_SCORE = 0.25;
+const LENGTH_PENALTY_REFERENCE_CHARS = 96;
+const LENGTH_PENALTY_SCALE = 0.35;
+const CONFIDENCE_BOOST_SCALE = 0.6;
+const SOURCE_KIND_WEIGHT: Record<string, number> = {
+  user_explicit: 0.2,
+  imported: 0.1,
+  assistant_inferred: 0,
+  system_generated: -0.2,
+};
 
 export class HotMemorySearch {
   private readonly config: PluginConfig;
@@ -222,12 +232,15 @@ export class HotMemorySearch {
 
       const intentBoost = this.computeIntentBoost(r, queryIntent, queryDomain, decay);
       const noisePenalty = this.computeNoisePenalty(r, normalizedQuery, tokenQuery);
+      const lengthPenalty = this.computeLengthPenalty(String(r.text || ''));
+      const evidenceBoost = this.computeEvidenceBoost(r);
 
       return {
         ...r,
-        __final_score: baseScore * (0.8 + 0.2 * decay) + lexicalBoost + intentBoost - noisePenalty,
+        __final_score: baseScore * (0.8 + 0.2 * decay) + lexicalBoost + intentBoost + evidenceBoost - noisePenalty - lengthPenalty,
       };
-    }).sort((a, b) => b.__final_score - a.__final_score);
+    }).filter((row) => row.__final_score >= MIN_FINAL_SCORE)
+      .sort((a, b) => b.__final_score - a.__final_score);
   }
 
   private normalizeText(value: string): string {
@@ -270,6 +283,24 @@ export class HotMemorySearch {
     }
 
     return boost;
+  }
+
+  private computeLengthPenalty(text: string): number {
+    const length = String(text || '').trim().length;
+    if (length <= LENGTH_PENALTY_REFERENCE_CHARS) {
+      return 0;
+    }
+
+    const ratio = length / LENGTH_PENALTY_REFERENCE_CHARS;
+    return Math.log2(ratio) * LENGTH_PENALTY_SCALE;
+  }
+
+  private computeEvidenceBoost(row: any): number {
+    const confidence = typeof row?.confidence === 'number' ? Math.max(0, Math.min(1, row.confidence)) : 0.7;
+    const confidenceBoost = (confidence - 0.5) * CONFIDENCE_BOOST_SCALE;
+    const sourceKind = String(row?.source_kind || '');
+    const sourceBoost = SOURCE_KIND_WEIGHT[sourceKind] ?? 0;
+    return confidenceBoost + sourceBoost;
   }
 
   private computeNoisePenalty(row: any, normalizedQuery: string, tokenQuery: boolean): number {

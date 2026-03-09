@@ -320,8 +320,8 @@ test('hot plane ranking penalizes metadata and test-token noise for non-credenti
   );
 
   assert.equal(ranked[0]?.memory_uid, 'user-preference');
-  assert.ok(ranked.findIndex((row: any) => row.memory_uid === 'noise-metadata') > 0);
-  assert.ok(ranked.findIndex((row: any) => row.memory_uid === 'noise-token') > 0);
+  assert.equal(ranked.some((row: any) => row.memory_uid === 'noise-metadata'), false);
+  assert.equal(ranked.some((row: any) => row.memory_uid === 'noise-token'), false);
 });
 
 test('hot plane preference intent reranking boosts preference memories for game-like queries', () => {
@@ -359,4 +359,90 @@ test('hot plane preference intent reranking boosts preference memories for game-
   );
 
   assert.equal(ranked[0]?.memory_uid, 'game-preference');
+});
+
+test('hot plane ranking prefers concise preference memories over long summaries', () => {
+  const cfg = {
+    lancedbPath: '',
+    mem0BaseUrl: '',
+    mem0ApiKey: '',
+    outboxDbPath: '',
+    auditStorePath: '',
+    autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+    autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+  };
+  const hot = new HotMemorySearch(cfg as any);
+  const now = new Date().toISOString();
+
+  const ranked = (hot as any).applyRankingAdjustments(
+    [
+      {
+        memory_uid: 'long-summary',
+        text: 'The user talked at length about fast food preferences, comparing several restaurants, discussing texture, sauce balance, and meal combinations before eventually mentioning that McDonald\'s grilled chicken leg burger was one item among several possibilities.',
+        categories: ['preference', 'food'],
+        memory_type: 'preference',
+        source_kind: 'assistant_inferred',
+        confidence: 0.75,
+        ts_event: now,
+        __rrf_score: 0.9,
+      },
+      {
+        memory_uid: 'concise-preference',
+        text: 'User likes McDonald\'s grilled chicken leg burger.',
+        categories: ['preference', 'food'],
+        memory_type: 'preference',
+        source_kind: 'user_explicit',
+        confidence: 0.95,
+        ts_event: now,
+        __rrf_score: 0.8,
+      },
+    ],
+    'What do I like to eat at McDonald\'s?',
+  );
+
+  assert.equal(ranked[0]?.memory_uid, 'concise-preference');
+});
+
+test('hot plane ranking prefers higher-confidence explicit memories over inferred ones', () => {
+  const cfg = {
+    lancedbPath: '',
+    mem0BaseUrl: '',
+    mem0ApiKey: '',
+    outboxDbPath: '',
+    auditStorePath: '',
+    autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+    autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+  };
+  const hot = new HotMemorySearch(cfg as any);
+  const now = new Date().toISOString();
+
+  const ranked = (hot as any).applyRankingAdjustments(
+    [
+      {
+        memory_uid: 'assistant-inferred',
+        text: 'User likes McDonald\'s grilled chicken leg burger.',
+        categories: ['preference', 'food'],
+        memory_type: 'preference',
+        source_kind: 'assistant_inferred',
+        confidence: 0.6,
+        ts_event: now,
+        __rrf_score: 0.8,
+      },
+      {
+        memory_uid: 'user-explicit',
+        text: 'User likes McDonald\'s grilled chicken leg burger.',
+        categories: ['preference', 'food'],
+        memory_type: 'preference',
+        source_kind: 'user_explicit',
+        confidence: 0.95,
+        ts_event: now,
+        __rrf_score: 0.8,
+      },
+    ],
+    'What do I like to eat at McDonald\'s?',
+  );
+
+  assert.equal(ranked[0]?.memory_uid, 'user-explicit');
 });
