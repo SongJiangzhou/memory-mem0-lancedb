@@ -164,7 +164,6 @@ def store_memory(request: MemoryStoreRequest):
             agent_id=request.agent_id,
             run_id=request.run_id,
             metadata=request.metadata,
-            filters=request.filters,
         )
         return result
     except Exception as e:

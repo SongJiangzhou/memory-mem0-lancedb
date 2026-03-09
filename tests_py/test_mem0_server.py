@@ -165,6 +165,32 @@ class Mem0ServerConfigTests(unittest.TestCase):
         self.assertEqual(fake_memory.kwargs["user_id"], "default")
         self.assertEqual(fake_memory.kwargs["limit"], 5)
 
+    def test_store_memory_does_not_pass_filters_to_mem0_add(self) -> None:
+        original_memory = mem0_server.memory
+
+        class FakeMemory:
+            def add(self, **kwargs):
+                self.kwargs = kwargs
+                return {"results": [{"id": "m1", "memory": "User prefers Coke"}]}
+
+        fake_memory = FakeMemory()
+        mem0_server.memory = fake_memory
+        try:
+            request = mem0_server.MemoryStoreRequest(
+                messages=[{"role": "user", "content": "I prefer Coke"}],
+                user_id="default",
+                metadata={"scope": "long-term"},
+                filters={"scope": "long-term"},
+            )
+            result = mem0_server.store_memory(request)
+        finally:
+            mem0_server.memory = original_memory
+
+        self.assertEqual(result, {"results": [{"id": "m1", "memory": "User prefers Coke"}]})
+        self.assertEqual(fake_memory.kwargs["user_id"], "default")
+        self.assertEqual(fake_memory.kwargs["metadata"], {"scope": "long-term"})
+        self.assertNotIn("filters", fake_memory.kwargs)
+
 
 if __name__ == "__main__":
     unittest.main()
