@@ -283,8 +283,7 @@ export default function register(api: OpenClawApi) {
         return null;
       }
 
-      event.prompt = `${prependContext}\n\n${String(event?.prompt || '')}`.trim();
-      return null;
+      return { prependSystemContext: prependContext };
     }, { name: 'mem0-auto-recall' });
   }
 

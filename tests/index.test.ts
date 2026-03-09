@@ -155,7 +155,7 @@ test('register includes plugin version in structured debug log file', async () =
   }
 });
 
-test('before_prompt_build injects auto-recall into the internal prompt without surfacing it to the user', async () => {
+test('before_prompt_build injects auto-recall into prependSystemContext without surfacing it to the user', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-recall-'));
 
@@ -209,9 +209,11 @@ test('before_prompt_build injects auto-recall into the internal prompt without s
       },
     );
 
-    assert.equal(result, null);
-    assert.match(String(event.prompt || ''), /<recall source="lancedb">/);
-    assert.match(String(event.prompt || ''), /User prefers replies in English/);
+    assert.equal(typeof result, 'object');
+    assert.equal(Array.isArray(event.messages), true);
+    assert.equal(String(event.messages[0]?.role || ''), 'user');
+    assert.match(String((result as any)?.prependSystemContext || ''), /<recall source="lancedb">/);
+    assert.match(String((result as any)?.prependSystemContext || ''), /User prefers replies in English/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -337,7 +339,7 @@ test('auto-capture hook syncs extracted memories into local storage after mem0 c
   }
 });
 
-test('before_prompt_build injects pending capture notification into the internal prompt without surfacing it to the user', async () => {
+test('before_prompt_build injects pending capture notification into prependSystemContext without surfacing it to the user', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-note-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const originalFetch = global.fetch;
@@ -410,9 +412,10 @@ test('before_prompt_build injects pending capture notification into the internal
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(result, null);
-    assert.match(String(event.prompt || ''), /<capture via="mem0"/);
-    assert.match(String(event.prompt || ''), /User enjoys a certain food/);
+    assert.equal(typeof result, 'object');
+    assert.equal(String(event.messages[0]?.role || ''), 'user');
+    assert.match(String((result as any)?.prependSystemContext || ''), /<capture via="mem0"/);
+    assert.match(String((result as any)?.prependSystemContext || ''), /User enjoys a certain food/);
     assert.throws(() => readFileSync(pendingCapturePath('test-session'), 'utf-8'));
   } finally {
     global.fetch = originalFetch;
@@ -497,8 +500,8 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(injected, null);
-    const injectedContext = String(beforePromptEvent.prompt || '');
+    assert.equal(typeof injected, 'object');
+    const injectedContext = String((injected as any)?.prependSystemContext || '');
 
     await captureHook?.handler(
       {
@@ -520,7 +523,7 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
   }
 });
 
-test('before_prompt_build clears pending capture notifications after injecting them into the internal prompt', async () => {
+test('before_prompt_build clears pending capture notifications after injecting them into prependSystemContext', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-silent-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const sessionKey = 'silent-session';
@@ -596,8 +599,9 @@ test('before_prompt_build clears pending capture notifications after injecting t
       { agentId: 'main', sessionKey },
     );
 
-    assert.equal(result, null);
-    assert.match(String(event.prompt || ''), /<capture via="mem0"/);
+    assert.equal(typeof result, 'object');
+    assert.equal(String(event.messages[0]?.role || ''), 'user');
+    assert.match(String((result as any)?.prependSystemContext || ''), /<capture via="mem0"/);
     assert.throws(() => readFileSync(pendingCapturePath(sessionKey), 'utf-8'));
   } finally {
     global.fetch = originalFetch;
