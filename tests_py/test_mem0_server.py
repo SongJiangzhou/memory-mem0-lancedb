@@ -146,6 +146,25 @@ class Mem0ServerConfigTests(unittest.TestCase):
         self.assertTrue(mem0_server.DEFAULT_MEM0_RUNTIME_DIR.endswith(".mem0_runtime"))
         self.assertEqual(os.environ.get("MEM0_DIR"), mem0_server.DEFAULT_MEM0_RUNTIME_DIR)
 
+    def test_list_memories_uses_mem0_get_all_and_returns_results(self) -> None:
+        original_memory = mem0_server.memory
+
+        class FakeMemory:
+            def get_all(self, **kwargs):
+                self.kwargs = kwargs
+                return {"results": [{"id": "m1", "memory": "User prefers Coke"}]}
+
+        fake_memory = FakeMemory()
+        mem0_server.memory = fake_memory
+        try:
+            result = mem0_server.list_memories(user_id="default", limit=5)
+        finally:
+            mem0_server.memory = original_memory
+
+        self.assertEqual(result, {"results": [{"id": "m1", "memory": "User prefers Coke"}]})
+        self.assertEqual(fake_memory.kwargs["user_id"], "default")
+        self.assertEqual(fake_memory.kwargs["limit"], 5)
+
 
 if __name__ == "__main__":
     unittest.main()

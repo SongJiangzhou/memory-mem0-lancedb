@@ -304,6 +304,10 @@ export class HttpMem0Client implements Mem0Client {
         topK: params.topK,
         rerank: params.rerank ?? false,
       });
+      const requestFilters =
+        this.config.mem0Mode === 'local'
+          ? normalizeLocalMem0Filters(params.filters || {})
+          : (params.filters || {});
       response = await this.fetchImpl(`${this.config.mem0BaseUrl}/v1/memories/search/`, {
         method: 'POST',
         headers: buildMem0Headers(this.config, { json: true }),
@@ -311,7 +315,7 @@ export class HttpMem0Client implements Mem0Client {
           query: params.query,
           user_id: params.userId,
           top_k: params.topK,
-          filters: params.filters || {},
+          filters: requestFilters,
           rerank: params.rerank ?? false,
           include_vectors: false,
         }),
@@ -380,5 +384,49 @@ export class FakeMem0Client implements Mem0Client {
     rerank?: boolean;
   }): Promise<Mem0ExtractedMemory[]> {
     return [];
+  }
+}
+
+function normalizeLocalMem0Filters(filters: Record<string, any>): Record<string, string | number | boolean> {
+  const normalized: Record<string, string | number | boolean> = {};
+  collectLocalMem0FilterLeaves(filters, normalized);
+  return normalized;
+}
+
+function collectLocalMem0FilterLeaves(
+  value: unknown,
+  target: Record<string, string | number | boolean>,
+  prefix?: string,
+): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    if (prefix) {
+      target[prefix] = value;
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectLocalMem0FilterLeaves(item, target, prefix);
+    }
+    return;
+  }
+
+  if (typeof value !== 'object') {
+    return;
+  }
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'AND' || key === 'OR' || key === 'NOT' || key === 'in') {
+      collectLocalMem0FilterLeaves(child, target, prefix);
+      continue;
+    }
+
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    collectLocalMem0FilterLeaves(child, target, nextPrefix);
   }
 }

@@ -330,6 +330,49 @@ test('http mem0 client submits enhanced search with filters and rerank', async (
   assert.match(capturedBody, /"memory_type":"preference"/);
 });
 
+test('http mem0 client flattens unsupported logical filters for local mem0 search', async () => {
+  let capturedBody = '';
+  const fetchStub = (async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedBody = String(init?.body || '');
+    return {
+      ok: true,
+      json: async () => ({ results: [] }),
+    };
+  }) as unknown as typeof fetch;
+  const cfg = {
+    ...buildConfig(),
+    mem0: { mode: 'local' as const, baseUrl: 'http://127.0.0.1:8000', apiKey: '' },
+    mem0Mode: 'local' as const,
+    mem0BaseUrl: 'http://127.0.0.1:8000',
+    mem0ApiKey: '',
+  };
+  const client = new HttpMem0Client(cfg, fetchStub);
+
+  await client.searchMemories({
+    query: 'What kind of games do I like?',
+    userId: 'user-1',
+    topK: 10,
+    filters: {
+      AND: [
+        { 'metadata.scope': 'long-term' },
+        {
+          OR: [
+            { metadata: { memory_type: 'preference' } },
+            { categories: { in: ['preference'] } },
+          ],
+        },
+      ],
+    },
+    rerank: true,
+  });
+
+  assert.doesNotMatch(capturedBody, /"AND"/);
+  assert.doesNotMatch(capturedBody, /"OR"/);
+  assert.doesNotMatch(capturedBody, /"in":/);
+  assert.match(capturedBody, /"metadata\.scope":"long-term"/);
+  assert.match(capturedBody, /"metadata\.memory_type":"preference"/);
+});
+
 test('http mem0 client fetches extracted memories for a confirmed capture event', async () => {
   const fetchStub = (async (input: string | URL | Request) => {
     const url = String(input);

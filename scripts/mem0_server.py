@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 app = FastAPI(title="Mem0 Local Server")
@@ -132,6 +132,26 @@ def health_check():
     if memory is None:
         raise HTTPException(status_code=500, detail="Mem0 initialization failed")
     return {"status": "ok"}
+
+
+@app.get("/v1/memories/")
+def list_memories(
+    user_id: str | None = Query(default=None),
+    agent_id: str | None = Query(default=None),
+    run_id: str | None = Query(default=None),
+    limit: int = Query(default=100),
+):
+    if memory is None:
+        raise HTTPException(status_code=500, detail="Mem0 initialization failed")
+    try:
+        return memory.get_all(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            limit=limit,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/memories/")
 def store_memory(request: MemoryStoreRequest):
