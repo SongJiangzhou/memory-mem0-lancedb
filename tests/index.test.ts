@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { FileAuditStore } from '../src/audit/store';
+import { MemoryStoreTool } from '../src/tools/store';
 import register, { resolveConfig } from '../src/index';
 
 function pendingCapturePath(sessionKey: string): string {
@@ -154,36 +155,65 @@ test('register includes plugin version in structured debug log file', async () =
   }
 });
 
-test('before_prompt_build auto-recall remains silent even when memories are found', async () => {
+test('before_prompt_build injects auto-recall context when memories are found', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
+  const dir = mkdtempSync(join(tmpdir(), 'index-auto-recall-'));
 
-  register({
-    pluginConfig: {
-      lancedbPath: join(mkdtempSync(join(tmpdir(), 'index-auto-recall-')), 'lancedb'),
-      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
-      autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
-    },
-    registerTool() {},
-    on(name: string, handler: Function) {
-      hooks.push({ name, handler });
-    },
-  } as any);
+  const store = new MemoryStoreTool({
+    lancedbPath: join(dir, 'lancedb'),
+    mem0BaseUrl: '',
+    mem0ApiKey: '',
+    outboxDbPath: join(dir, 'outbox.json'),
+    auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+    autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' as const },
+    autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+  });
 
-  const hook = hooks.find((entry) => entry.name === 'before_prompt_build');
-  assert.ok(hook);
+  await store.execute({
+    text: 'User prefers replies in English',
+    userId: 'default',
+    scope: 'long-term',
+    categories: ['preference'],
+  });
 
-  const result = await hook?.handler(
-    {},
-    {
-      userId: 'user-1',
-      latestUserMessage: 'What language should you use?',
-      messages: [
-        { role: 'user', content: 'Please always reply in English' },
-      ],
-    },
-  );
+  try {
+    register({
+      pluginConfig: {
+        lancedbPath: join(dir, 'lancedb'),
+        outboxDbPath: join(dir, 'outbox.json'),
+        auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+        autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
+      },
+      registerTool() {},
+      on(name: string, handler: Function) {
+        hooks.push({ name, handler });
+      },
+    } as any);
 
-  assert.equal(result, null);
+    const hook = hooks.find((entry) => entry.name === 'before_prompt_build');
+    assert.ok(hook);
+
+    const result = await hook?.handler(
+      {
+        prompt: 'English',
+        messages: [
+          { role: 'user', content: 'English' },
+        ],
+      },
+      {
+        agentId: 'main',
+        sessionKey: 'test-session',
+      },
+    );
+
+    assert.equal(typeof result, 'object');
+    assert.match(String((result as any)?.prependContext || ''), /<recall source="lancedb">/);
+    assert.match(String((result as any)?.prependContext || ''), /User prefers replies in English/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('register installs auto-capture hook when enabled and hook api exists', async () => {
@@ -378,8 +408,10 @@ test('before_prompt_build surfaces pending capture notification from previous su
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(result, null);
-    assert.equal(readFileSync(pendingCapturePath('test-session'), 'utf-8').includes('User enjoys a certain food'), true);
+    assert.equal(typeof result, 'object');
+    assert.match(String((result as any)?.prependContext || ''), /<capture via="mem0"/);
+    assert.match(String((result as any)?.prependContext || ''), /User enjoys a certain food/);
+    assert.throws(() => readFileSync(pendingCapturePath('test-session'), 'utf-8'));
   } finally {
     global.fetch = originalFetch;
     rmSync(dir, { recursive: true, force: true });
@@ -462,7 +494,7 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
       { agentId: 'main', sessionKey: 'test-session' },
     );
 
-    assert.equal(injected, null);
+    assert.equal(typeof injected, 'object');
 
     const injectedContext =
       injected && typeof injected === 'object' && 'prependContext' in injected ? String((injected as any).prependContext || '') : '';
@@ -487,7 +519,7 @@ test('auto-capture does not send prior capture notification back to mem0 on the 
   }
 });
 
-test('before_prompt_build clears pending capture notifications without surfacing them to the user', async () => {
+test('before_prompt_build clears pending capture notifications after surfacing them to the user', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-auto-capture-silent-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const sessionKey = 'silent-session';
@@ -562,7 +594,8 @@ test('before_prompt_build clears pending capture notifications without surfacing
       { agentId: 'main', sessionKey },
     );
 
-    assert.equal(result, null);
+    assert.equal(typeof result, 'object');
+    assert.match(String((result as any)?.prependContext || ''), /<capture via="mem0"/);
     assert.throws(() => readFileSync(pendingCapturePath(sessionKey), 'utf-8'));
   } finally {
     global.fetch = originalFetch;

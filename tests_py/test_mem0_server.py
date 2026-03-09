@@ -191,6 +191,5 @@ class Mem0ServerConfigTests(unittest.TestCase):
         self.assertEqual(fake_memory.kwargs["metadata"], {"scope": "long-term"})
         self.assertNotIn("filters", fake_memory.kwargs)
 
-
 if __name__ == "__main__":
     unittest.main()

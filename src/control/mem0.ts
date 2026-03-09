@@ -23,6 +23,25 @@ export interface Mem0ExtractedMemory {
   hash: string | null;
 }
 
+function mapExtractedMemories(items: any[]): Mem0ExtractedMemory[] {
+  return items
+    .map((item: any) => ({
+      id: item.id || null,
+      text: item.memory || item.text || item.data?.memory || item.data?.text || '',
+      categories: Array.isArray(item.categories)
+        ? item.categories
+        : Array.isArray(item.data?.categories)
+          ? item.data.categories
+          : [],
+      memory_type: item.metadata?.memory_type || item.data?.metadata?.memory_type || item.memory_type || undefined,
+      domains: item.metadata?.domains || item.data?.metadata?.domains || item.domains || [],
+      source_kind: item.metadata?.source_kind || item.data?.metadata?.source_kind || undefined,
+      confidence: typeof item.metadata?.confidence === 'number' ? item.metadata.confidence : undefined,
+      hash: item.hash || item.data?.hash || null,
+    }))
+    .filter((m: Mem0ExtractedMemory) => Boolean(m.text));
+}
+
 export interface Mem0Client {
   storeMemory(record: MemoryRecord): Promise<Mem0StoreResult>;
   captureTurn(payload: AutoCapturePayload): Promise<Mem0StoreResult>;
@@ -151,22 +170,7 @@ export class HttpMem0Client implements Mem0Client {
 
     // Mem0 may return extracted memories directly as an array (no event polling needed)
     if (Array.isArray(data)) {
-      const extractedMemories: Mem0ExtractedMemory[] = data
-        .map((item: any) => ({
-          id: item.id || null,
-          text: item.memory || item.text || item.data?.memory || item.data?.text || '',
-          categories: Array.isArray(item.categories)
-            ? item.categories
-            : Array.isArray(item.data?.categories)
-              ? item.data.categories
-              : [],
-          memory_type: item.metadata?.memory_type || item.data?.metadata?.memory_type || item.memory_type || undefined,
-          domains: item.metadata?.domains || item.data?.metadata?.domains || item.domains || [],
-          source_kind: item.metadata?.source_kind || item.data?.metadata?.source_kind || undefined,
-          confidence: typeof item.metadata?.confidence === 'number' ? item.metadata.confidence : undefined,
-          hash: item.hash || item.data?.hash || null,
-        }))
-        .filter((m: Mem0ExtractedMemory) => Boolean(m.text));
+      const extractedMemories = mapExtractedMemories(data);
       const queuedEventId = data.find((item: any) => typeof item?.event_id === 'string' && item.event_id)?.event_id || null;
       if (extractedMemories.length === 0 && queuedEventId) {
         this.debug?.basic('mem0.capture.submitted', { status: response.status, eventId: queuedEventId, mode: 'event_array' });
@@ -179,6 +183,14 @@ export class HttpMem0Client implements Mem0Client {
       }
       this.debug?.basic('mem0.capture.submitted', { status: response.status, extractedCount: extractedMemories.length, mode: 'direct' });
       return { status: 'submitted', mem0_id: null, event_id: null, hash: null, extractedMemories };
+    }
+
+    if (Array.isArray(data?.results)) {
+      const extractedMemories = mapExtractedMemories(data.results);
+      if (extractedMemories.length > 0) {
+        this.debug?.basic('mem0.capture.submitted', { status: response.status, extractedCount: extractedMemories.length, mode: 'direct_object' });
+        return { status: 'submitted', mem0_id: null, event_id: null, hash: null, extractedMemories };
+      }
     }
 
     const event_id = data.event_id || null;

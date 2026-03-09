@@ -306,6 +306,44 @@ test('http mem0 client keeps event id when capture returns queued event array', 
   assert.equal(result.extractedMemories, undefined);
 });
 
+test('http mem0 client maps object results capture response as direct extracted memories', async () => {
+  const fetchStub = (async () => ({
+    ok: true,
+    json: async () => ({
+      results: [
+        {
+          id: 'mem_obj_1',
+          memory: 'User prefers Coke over Pepsi',
+          categories: ['preference'],
+          hash: 'hash-coke',
+        },
+      ],
+    }),
+  })) as unknown as typeof fetch;
+  const client = new HttpMem0Client(buildConfig(), fetchStub);
+  const payload = buildAutoCapturePayload({
+    userId: 'user-1',
+    latestUserMessage: 'I prefer Coke over Pepsi',
+    latestAssistantMessage: 'Noted.',
+    config: {
+      enabled: true,
+      scope: 'long-term',
+      requireAssistantReply: true,
+      maxCharsPerMessage: 2000,
+    },
+  });
+
+  const result = await client.captureTurn(payload!);
+
+  assert.equal(result.status, 'submitted');
+  if (result.status !== 'submitted') {
+    return;
+  }
+  assert.equal(result.extractedMemories?.length, 1);
+  assert.equal(result.extractedMemories?.[0]?.text, 'User prefers Coke over Pepsi');
+  assert.equal(result.extractedMemories?.[0]?.hash, 'hash-coke');
+});
+
 test('http mem0 client submits enhanced search with filters and rerank', async () => {
   let capturedBody = '';
   const fetchStub = (async (_input: string | URL | Request, init?: RequestInit) => {

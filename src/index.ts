@@ -263,7 +263,7 @@ export default function register(api: OpenClawApi) {
         return null;
       }
 
-      await runAutoRecall({
+      const recall = await runAutoRecall({
         query: String(latestUserMessage),
         userId: 'default',
         config: cfg.autoRecall,
@@ -272,11 +272,18 @@ export default function register(api: OpenClawApi) {
       });
 
       // Surface pending capture notification from previous turn
+      let pendingBlock = '';
       if (sessionKey) {
-        readAndClearPendingCapture(sessionKey);
+        const pending = readAndClearPendingCapture(sessionKey);
+        pendingBlock = buildPendingCaptureBlock(pending);
       }
 
-      return null;
+      const prependContext = [pendingBlock, recall.block].filter(Boolean).join('\n\n');
+      if (!prependContext) {
+        return null;
+      }
+
+      return { prependContext };
     }, { name: 'mem0-auto-recall' });
   }
 
@@ -433,6 +440,22 @@ function readAndClearPendingCapture(sessionKey: string): Record<string, any> | n
   }
 }
 
+function buildPendingCaptureBlock(notification: Record<string, any> | null): string {
+  if (!notification || !Array.isArray(notification.memories) || notification.memories.length === 0) {
+    return '';
+  }
+
+  const via = String(notification.via || 'mem0');
+  const count = Number(notification.count || notification.memories.length || 0);
+  const synced = notification.syncedToLancedb ? ' synced="lancedb"' : '';
+  const lines = notification.memories.map((memory) => `- ${String(memory || '').trim()}`).filter(Boolean);
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return `<capture via="${via}" count="${count}"${synced}>\n${lines.join('\n')}\n</capture>`;
+}
+
 function extractLatestMessages(messages: unknown[]): { latestUserMessage: string; latestAssistantMessage: string } {
   let latestUserMessage = '';
   let latestAssistantMessage = '';
@@ -442,7 +465,7 @@ function extractLatestMessages(messages: unknown[]): { latestUserMessage: string
     const msg = messages[i] as any;
     const role = String(msg?.role || msg?.author || '');
     const raw = extractTextContent(msg?.content);
-    const content = stripInjectedArtifacts(raw).trim();
+    const content = String(raw || '').trim();
     if (!content) continue;
     if (role === 'assistant' && !latestAssistantMessage) {
       latestAssistantMessage = content;
