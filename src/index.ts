@@ -14,6 +14,7 @@ import { HttpMem0Client } from './control/mem0';
 import { runAutoRecall } from './recall/auto';
 import { Mem0Poller } from './bridge/poller';
 import { EmbeddingMigrationWorker } from './hot/migration-worker';
+import { MemoryConsolidationWorker } from './hot/consolidation-worker';
 import { PluginDebugLogger, summarizeText } from './debug/logger';
 import { isLocalMem0BaseUrl } from './control/auth';
 import type { PluginConfig } from './types';
@@ -75,6 +76,11 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
       enabled: raw?.embeddingMigration?.enabled ?? true,
       intervalMs: raw?.embeddingMigration?.intervalMs || 15 * 60 * 1000,
       batchSize: raw?.embeddingMigration?.batchSize || 20,
+    },
+    memoryConsolidation: {
+      enabled: raw?.memoryConsolidation?.enabled ?? true,
+      intervalMs: raw?.memoryConsolidation?.intervalMs || 6 * 60 * 60 * 1000,
+      batchSize: raw?.memoryConsolidation?.batchSize || 50,
     },
     debug: {
       mode: raw?.debug?.mode || 'off',
@@ -148,6 +154,7 @@ export default function register(api: OpenClawApi) {
     autoCaptureEnabled: cfg.autoCapture.enabled,
     embeddingDimension: cfg.embedding.dimension,
     embeddingMigrationEnabled: cfg.embeddingMigration?.enabled ?? true,
+    memoryConsolidationEnabled: cfg.memoryConsolidation?.enabled ?? true,
     debugMode: cfg.debug?.mode || 'off',
     debugLogDir: cfg.debug?.logDir,
   });
@@ -160,6 +167,19 @@ export default function register(api: OpenClawApi) {
   const migrationWorker = new EmbeddingMigrationWorker(cfg, debug);
   migrationWorker.start();
   debug.basic('plugin.migration_worker_started', {});
+  if (cfg.memoryConsolidation?.enabled ?? true) {
+    const consolidationWorker = new MemoryConsolidationWorker(
+      {
+        auditStore: new FileAuditStore(cfg.auditStorePath),
+        adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
+        intervalMs: cfg.memoryConsolidation?.intervalMs || 6 * 60 * 60 * 1000,
+        batchSize: cfg.memoryConsolidation?.batchSize || 50,
+      },
+      debug,
+    );
+    consolidationWorker.start();
+    debug.basic('plugin.consolidation_worker_started', {});
+  }
 
   // memory slot 主工具：完全走新机制（不再桥接 memory-core）
   api.registerTool({

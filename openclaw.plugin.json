@@ -111,6 +111,23 @@
             "default": 20
           }
         }
+      },
+      "memoryConsolidation": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "intervalMs": {
+            "type": "number",
+            "default": 21600000
+          },
+          "batchSize": {
+            "type": "number",
+            "default": 50
+          }
+        }
       }
     }
   }

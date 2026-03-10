@@ -52,6 +52,7 @@ export interface PluginConfig {
   autoCapture: AutoCaptureConfig;
   embedding: EmbeddingConfig;
   embeddingMigration?: EmbeddingMigrationConfig;
+  memoryConsolidation?: MemoryConsolidationConfig;
   debug?: DebugConfig;
 }
 
@@ -73,6 +74,12 @@ export interface Mem0Config {
 }
 
 export interface EmbeddingMigrationConfig {
+  enabled: boolean;
+  intervalMs: number;
+  batchSize: number;
+}
+
+export interface MemoryConsolidationConfig {
   enabled: boolean;
   intervalMs: number;
   batchSize: number;

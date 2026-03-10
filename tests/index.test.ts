@@ -19,6 +19,9 @@ test('resolveConfig sets embedding migration defaults', async () => {
   assert.equal(config.embeddingMigration?.enabled, true);
   assert.equal(config.embeddingMigration?.intervalMs, 15 * 60 * 1000);
   assert.equal(config.embeddingMigration?.batchSize, 20);
+  assert.equal(config.memoryConsolidation?.enabled, true);
+  assert.equal(config.memoryConsolidation?.intervalMs, 6 * 60 * 60 * 1000);
+  assert.equal(config.memoryConsolidation?.batchSize, 50);
   assert.equal(config.autoRecall.topK, 8);
   assert.equal(config.autoRecall.maxChars, 1400);
 });
@@ -43,6 +46,20 @@ test('resolveConfig respects embedding migration overrides', async () => {
   assert.equal(config.embeddingMigration?.enabled, false);
   assert.equal(config.embeddingMigration?.intervalMs, 30_000);
   assert.equal(config.embeddingMigration?.batchSize, 5);
+});
+
+test('resolveConfig respects memory consolidation overrides', async () => {
+  const config = resolveConfig({
+    memoryConsolidation: {
+      enabled: false,
+      intervalMs: 120_000,
+      batchSize: 10,
+    },
+  } as any);
+
+  assert.equal(config.memoryConsolidation?.enabled, false);
+  assert.equal(config.memoryConsolidation?.intervalMs, 120_000);
+  assert.equal(config.memoryConsolidation?.batchSize, 10);
 });
 
 test('resolveConfig maps nested mem0 config into explicit runtime mode', async () => {
