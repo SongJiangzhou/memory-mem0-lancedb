@@ -6,6 +6,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, wr
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { styleText } from 'node:util';
 
 const PLUGIN_NAME = 'openclaw-mem0-lancedb';
 const ROOT_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -25,6 +26,10 @@ const STRINGS = {
     autoRecallTopK: 'Max memories to inject (topK)',
     autoRecallMaxChars: 'Max chars for injected context',
     autoRecallScope: 'Recall scope',
+    autoRecallRerankerProvider: 'Recall reranker',
+    autoRecallRerankerBaseUrl: 'Voyage reranker base URL',
+    autoRecallRerankerApiKey: 'Voyage reranker API key',
+    autoRecallRerankerModel: 'Voyage reranker model',
     autoCapture: 'Enable auto capture?',
     autoCaptureScope: 'Capture scope',
     autoCaptureRequireReply: 'Require assistant reply before capture?',
@@ -39,6 +44,9 @@ const STRINGS = {
       mem0Disabled: 'Disable Mem0 (LanceDB-only, no sync)',
       recallAll: 'all (long-term + session)',
       recallLongTerm: 'long-term only',
+      rerankerLocal: 'local (built-in lightweight reranker)',
+      rerankerVoyage: 'voyage (VoyageAI API)',
+      rerankerNone: 'none (keep merged recall order)',
       captureLongTerm: 'long-term (persistent)',
       captureSession: 'session (ephemeral)',
       debugBasic: 'basic (recommended)',
@@ -59,6 +67,10 @@ const STRINGS = {
     autoRecallTopK: '最大注入记忆条数 (topK)',
     autoRecallMaxChars: '注入上下文的最大字符限制',
     autoRecallScope: '召回范围',
+    autoRecallRerankerProvider: '召回精排器',
+    autoRecallRerankerBaseUrl: 'Voyage 精排 Base URL',
+    autoRecallRerankerApiKey: 'Voyage 精排 API Key',
+    autoRecallRerankerModel: 'Voyage 精排模型',
     autoCapture: '是否启用自动提取？',
     autoCaptureScope: '保存范围',
     autoCaptureRequireReply: '是否要求必须在模型回复后才触发提取？',
@@ -73,6 +85,9 @@ const STRINGS = {
       mem0Disabled: '禁用 Mem0 (仅使用 LanceDB，不进行外部同步)',
       recallAll: 'all (全局：包含长短期记忆)',
       recallLongTerm: 'long-term only (仅长期记忆)',
+      rerankerLocal: 'local (内置轻量精排)',
+      rerankerVoyage: 'voyage (VoyageAI API)',
+      rerankerNone: 'none (保持召回合并顺序)',
       captureLongTerm: 'long-term (持久化的长期记忆)',
       captureSession: 'session (临时会话记忆)',
       debugBasic: 'basic（推荐）',
@@ -185,14 +200,20 @@ function loadJson(filePath) {
 
 export function buildDefaultPluginConfig(existingConfig = {}) {
   const existingMem0 = existingConfig?.mem0 || {};
+  const existingAutoRecall = existingConfig?.autoRecall || {};
+  const existingAutoCapture = existingConfig?.autoCapture || {};
+  const existingDebug = existingConfig?.debug || {};
+  const existingReranker = existingConfig?.autoRecall?.reranker || {};
   const memoryRoot = path.join(os.homedir(), '.openclaw', 'workspace', 'data', 'memory');
+  const mem0Mode = existingMem0.mode || 'local';
+  const mem0BaseUrl = existingMem0.baseUrl || (mem0Mode === 'remote' ? 'https://api.mem0.ai' : 'http://127.0.0.1:8000');
 
   return {
     lancedbPath: path.join(memoryRoot, 'lancedb'),
     mem0: {
-      mode: 'remote',
-      baseUrl: 'https://api.mem0.ai',
-      apiKey: existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '',
+      mode: mem0Mode,
+      baseUrl: mem0BaseUrl,
+      apiKey: mem0Mode === 'remote' ? existingMem0.apiKey || '' : '',
     },
     outboxDbPath: path.join(memoryRoot, 'outbox.json'),
     auditStorePath: path.join(memoryRoot, 'audit', 'memory_records.jsonl'),
@@ -201,98 +222,177 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
     },
     autoRecall: {
       enabled: true,
-      topK: 8,
-      maxChars: 1400,
-      scope: 'all',
+      topK: existingAutoRecall.topK || 8,
+      maxChars: existingAutoRecall.maxChars || 1400,
+      scope: existingAutoRecall.scope || 'all',
+      reranker: {
+        provider: existingReranker.provider || 'local',
+        baseUrl: existingReranker.baseUrl || 'https://api.voyageai.com/v1',
+        apiKey: existingReranker.apiKey || '',
+        model: existingReranker.model || 'rerank-2.5-lite',
+      },
     },
     autoCapture: {
-      enabled: false,
-      scope: 'long-term',
-      requireAssistantReply: true,
-      maxCharsPerMessage: 2000,
+      enabled: existingAutoCapture.enabled ?? false,
+      scope: existingAutoCapture.scope || 'long-term',
+      requireAssistantReply: existingAutoCapture.requireAssistantReply ?? true,
+      maxCharsPerMessage: existingAutoCapture.maxCharsPerMessage || 2000,
     },
+    ...(existingDebug.mode || existingDebug.logDir ? { debug: { mode: existingDebug.mode || 'basic', ...(existingDebug.logDir ? { logDir: existingDebug.logDir } : {}) } } : {}),
   };
 }
 
 export async function promptForConfig(strings, existingConfig = {}) {
   const existingMem0 = existingConfig?.mem0 || {};
+  const existingAutoRecall = existingConfig?.autoRecall || {};
+  const existingAutoCapture = existingConfig?.autoCapture || {};
+  const existingDebug = existingConfig?.debug || {};
+  const existingReranker = existingConfig?.autoRecall?.reranker || {};
   const memoryRoot = path.join(os.homedir(), '.openclaw', 'workspace', 'data', 'memory');
   const mem0Mode = await select({
-    message: strings.mem0Mode,
+    message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, existingMem0.mode != null, strings),
     options: [
       { value: 'local', label: strings.choices.mem0Local },
       { value: 'remote', label: strings.choices.mem0Remote },
       { value: 'disabled', label: strings.choices.mem0Disabled },
     ],
-    initialValue: 'remote',
+    initialValue: existingMem0.mode || 'local',
   });
   if (isCancel(mem0Mode)) process.exit(1);
 
   let mem0BaseUrl = 'https://api.mem0.ai';
   let mem0ApiKey = '';
   if (mem0Mode === 'local') {
-    const value = await text({ message: strings.mem0LocalUrl, defaultValue: 'http://127.0.0.1:8000' });
+    const value = await text({
+      message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', existingMem0.mode === 'local' && existingMem0.baseUrl != null, strings),
+      defaultValue: existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000',
+    });
     if (isCancel(value)) process.exit(1);
     mem0BaseUrl = value;
   } else if (mem0Mode === 'remote') {
+    mem0BaseUrl = existingMem0.mode === 'remote' ? existingMem0.baseUrl || 'https://api.mem0.ai' : 'https://api.mem0.ai';
     const value = await text({
-      message: strings.mem0ApiKey,
+      message: withDefaultHint(strings.mem0ApiKey, '', existingMem0.mode === 'remote' && existingMem0.apiKey != null, strings),
       defaultValue: existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '',
     });
     if (isCancel(value)) process.exit(1);
     mem0ApiKey = value;
   }
 
-  const autoRecallEnabled = await confirm({ message: strings.autoRecall, initialValue: true });
+  const autoRecallEnabled = await confirm({
+    message: withDefaultHint(strings.autoRecall, 'true', existingAutoRecall.enabled != null, strings),
+    initialValue: existingAutoRecall.enabled ?? true,
+  });
   if (isCancel(autoRecallEnabled)) process.exit(1);
-  const autoRecallTopK = autoRecallEnabled ? Number(await text({ message: strings.autoRecallTopK, defaultValue: '8' })) : 8;
-  const autoRecallMaxChars = autoRecallEnabled ? Number(await text({ message: strings.autoRecallMaxChars, defaultValue: '1400' })) : 1400;
-  let autoRecallScope = 'all';
+  const autoRecallTopK = autoRecallEnabled
+    ? Number(await text({
+      message: withDefaultHint(strings.autoRecallTopK, '8', existingAutoRecall.topK != null, strings),
+      defaultValue: String(existingAutoRecall.topK ?? 8),
+    }))
+    : Number(existingAutoRecall.topK ?? 8);
+  const autoRecallMaxChars = autoRecallEnabled
+    ? Number(await text({
+      message: withDefaultHint(strings.autoRecallMaxChars, '1400', existingAutoRecall.maxChars != null, strings),
+      defaultValue: String(existingAutoRecall.maxChars ?? 1400),
+    }))
+    : Number(existingAutoRecall.maxChars ?? 1400);
+  let autoRecallScope = existingAutoRecall.scope || 'all';
+  let autoRecallRerankerProvider = existingReranker.provider || 'local';
+  let autoRecallRerankerBaseUrl = existingReranker.baseUrl || 'https://api.voyageai.com/v1';
+  let autoRecallRerankerApiKey = existingReranker.apiKey || '';
+  let autoRecallRerankerModel = existingReranker.model || 'rerank-2.5-lite';
   if (autoRecallEnabled) {
     autoRecallScope = await select({
-      message: strings.autoRecallScope,
+      message: withDefaultHint(strings.autoRecallScope, strings.choices.recallAll, existingAutoRecall.scope != null, strings),
       options: [
         { value: 'all', label: strings.choices.recallAll },
         { value: 'long-term', label: strings.choices.recallLongTerm },
       ],
-      initialValue: 'all',
+      initialValue: autoRecallScope,
     });
     if (isCancel(autoRecallScope)) process.exit(1);
+
+    autoRecallRerankerProvider = await select({
+      message: withDefaultHint(strings.autoRecallRerankerProvider, strings.choices.rerankerLocal, existingReranker.provider != null, strings),
+      options: [
+        { value: 'local', label: strings.choices.rerankerLocal },
+        { value: 'voyage', label: strings.choices.rerankerVoyage },
+        { value: 'none', label: strings.choices.rerankerNone },
+      ],
+      initialValue: autoRecallRerankerProvider,
+    });
+    if (isCancel(autoRecallRerankerProvider)) process.exit(1);
+
+    if (autoRecallRerankerProvider === 'voyage') {
+      const baseUrl = await text({
+        message: withDefaultHint(strings.autoRecallRerankerBaseUrl, 'https://api.voyageai.com/v1', existingReranker.baseUrl != null, strings),
+        defaultValue: autoRecallRerankerBaseUrl,
+      });
+      if (isCancel(baseUrl)) process.exit(1);
+      autoRecallRerankerBaseUrl = baseUrl;
+
+      const apiKey = await text({
+        message: withDefaultHint(strings.autoRecallRerankerApiKey, '', existingReranker.apiKey != null, strings),
+        defaultValue: autoRecallRerankerApiKey,
+      });
+      if (isCancel(apiKey)) process.exit(1);
+      autoRecallRerankerApiKey = apiKey;
+
+      const model = await text({
+        message: withDefaultHint(strings.autoRecallRerankerModel, 'rerank-2.5-lite', existingReranker.model != null, strings),
+        defaultValue: autoRecallRerankerModel,
+      });
+      if (isCancel(model)) process.exit(1);
+      autoRecallRerankerModel = model;
+    }
   }
 
-  const autoCaptureEnabled = await confirm({ message: strings.autoCapture, initialValue: false });
+  const autoCaptureEnabled = await confirm({
+    message: withDefaultHint(strings.autoCapture, 'false', existingAutoCapture.enabled != null, strings),
+    initialValue: existingAutoCapture.enabled ?? false,
+  });
   if (isCancel(autoCaptureEnabled)) process.exit(1);
-  let autoCaptureScope = 'long-term';
-  let autoCaptureRequireReply = true;
-  let autoCaptureMaxChars = 2000;
+  let autoCaptureScope = existingAutoCapture.scope || 'long-term';
+  let autoCaptureRequireReply = existingAutoCapture.requireAssistantReply ?? true;
+  let autoCaptureMaxChars = Number(existingAutoCapture.maxCharsPerMessage ?? 2000);
   if (autoCaptureEnabled) {
     autoCaptureScope = await select({
-      message: strings.autoCaptureScope,
+      message: withDefaultHint(strings.autoCaptureScope, strings.choices.captureLongTerm, existingAutoCapture.scope != null, strings),
       options: [
         { value: 'long-term', label: strings.choices.captureLongTerm },
         { value: 'session', label: strings.choices.captureSession },
       ],
-      initialValue: 'long-term',
+      initialValue: autoCaptureScope,
     });
     if (isCancel(autoCaptureScope)) process.exit(1);
-    autoCaptureRequireReply = await confirm({ message: strings.autoCaptureRequireReply, initialValue: true });
+    autoCaptureRequireReply = await confirm({
+      message: withDefaultHint(strings.autoCaptureRequireReply, 'true', existingAutoCapture.requireAssistantReply != null, strings),
+      initialValue: autoCaptureRequireReply,
+    });
     if (isCancel(autoCaptureRequireReply)) process.exit(1);
-    autoCaptureMaxChars = Number(await text({ message: strings.autoCaptureMaxChars, defaultValue: '2000' }));
+    autoCaptureMaxChars = Number(await text({
+      message: withDefaultHint(strings.autoCaptureMaxChars, '2000', existingAutoCapture.maxCharsPerMessage != null, strings),
+      defaultValue: String(autoCaptureMaxChars),
+    }));
   }
 
   const debugChoice = await select({
-    message: strings.debugMode,
+    message: withDefaultHint(strings.debugMode, strings.choices.debugBasic, existingDebug.mode != null || existingDebug.logDir != null, strings),
     options: [
       { value: 'basic', label: strings.choices.debugBasic },
       { value: 'off', label: strings.choices.debugOff },
       { value: 'verbose', label: strings.choices.debugVerbose },
       { value: 'verbose-file', label: strings.choices.debugVerboseFile },
     ],
+    initialValue: existingDebug.logDir ? 'verbose-file' : existingDebug.mode || 'basic',
   });
   if (isCancel(debugChoice)) process.exit(1);
   let debugLogDir;
   if (debugChoice === 'verbose-file') {
-    const value = await text({ message: strings.debugLogDir, defaultValue: '~/.openclaw/workspace/logs/openclaw-mem0-lancedb' });
+    const value = await text({
+      message: withDefaultHint(strings.debugLogDir, '~/.openclaw/workspace/logs/openclaw-mem0-lancedb', existingDebug.logDir != null, strings),
+      defaultValue: existingDebug.logDir || '~/.openclaw/workspace/logs/openclaw-mem0-lancedb',
+    });
     if (isCancel(value)) process.exit(1);
     debugLogDir = value;
   }
@@ -315,6 +415,12 @@ export async function promptForConfig(strings, existingConfig = {}) {
       topK: autoRecallTopK,
       maxChars: autoRecallMaxChars,
       scope: autoRecallScope,
+      reranker: {
+        provider: autoRecallRerankerProvider,
+        baseUrl: autoRecallRerankerBaseUrl,
+        apiKey: autoRecallRerankerProvider === 'voyage' ? autoRecallRerankerApiKey : '',
+        model: autoRecallRerankerModel,
+      },
     },
     autoCapture: {
       enabled: autoCaptureEnabled,
@@ -327,6 +433,19 @@ export async function promptForConfig(strings, existingConfig = {}) {
 
 export function getExistingPluginConfig(openclawConfig) {
   return openclawConfig?.plugins?.entries?.[PLUGIN_NAME]?.config || {};
+}
+
+export function withDefaultHint(message, defaultValue, hasExistingValue, strings) {
+  if (hasExistingValue) {
+    return message;
+  }
+
+  const prefix = isChineseStrings(strings) ? '默认' : 'default';
+  return `${message} ${styleText('dim', `(${prefix}: ${defaultValue})`)}`;
+}
+
+function isChineseStrings(strings) {
+  return typeof strings?.intro === 'string' && /安装器/.test(strings.intro);
 }
 
 function isDirectRun() {

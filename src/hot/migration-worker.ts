@@ -9,12 +9,27 @@ import type { PluginConfig } from '../types';
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 20;
+const ACTIVE_RETRY_INTERVAL_MS = 1_000;
+const EMBEDDING_MIN_INTERVAL_MS = 250;
+const EMBEDDING_429_MAX_RETRIES = 3;
+const EMBEDDING_429_BASE_BACKOFF_MS = 1_000;
+const EMBEDDING_RATE_LIMIT_COOLDOWN_MS = 30_000;
+const VOYAGE_MAX_BATCH_SIZE = 5;
+
+type MigrationBatchResult = {
+  migrated: number;
+  failed: number;
+  legacyTables: number;
+  retryableFailures: number;
+};
 
 export class EmbeddingMigrationWorker {
   private readonly config: PluginConfig;
   private readonly debug?: PluginDebugLogger;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private loopEnabled = false;
+  private lastEmbeddingAttemptAt = 0;
 
   constructor(config: PluginConfig, debug?: PluginDebugLogger) {
     this.config = config;
@@ -22,22 +37,21 @@ export class EmbeddingMigrationWorker {
   }
 
   start(intervalMs: number = this.getMigrationConfig().intervalMs): void {
-    if (this.timer || !this.getMigrationConfig().enabled) {
+    if (this.loopEnabled || !this.getMigrationConfig().enabled) {
       return;
     }
 
-    this.timer = setInterval(() => {
-      void this.runOnce();
-    }, intervalMs);
-    this.timer.unref?.();
+    this.loopEnabled = true;
+    this.scheduleNextRun(0, intervalMs);
   }
 
   stop(): void {
+    this.loopEnabled = false;
     if (!this.timer) {
       return;
     }
 
-    clearInterval(this.timer);
+    clearTimeout(this.timer);
     this.timer = null;
   }
 
@@ -66,19 +80,72 @@ export class EmbeddingMigrationWorker {
       .execute(safeRows);
   }
 
-  private async migrateBatch(): Promise<void> {
+  protected async requestEmbedding(text: string): Promise<number[]> {
+    return embedText(text, this.config.embedding);
+  }
+
+  protected async sleep(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async runLoop(idleIntervalMs: number): Promise<void> {
+    if (!this.loopEnabled) {
+      return;
+    }
+
+    const result = await this.runOnceWithResult();
+    if (!this.loopEnabled) {
+      return;
+    }
+
+    const hasPendingLegacy = result.legacyTables > 0;
+    const shouldContinueSoon = hasPendingLegacy && (result.migrated > 0 || result.retryableFailures > 0);
+    const nextDelay = result.retryableFailures > 0
+      ? EMBEDDING_RATE_LIMIT_COOLDOWN_MS
+      : shouldContinueSoon
+        ? ACTIVE_RETRY_INTERVAL_MS
+        : idleIntervalMs;
+    this.scheduleNextRun(nextDelay, idleIntervalMs);
+  }
+
+  private scheduleNextRun(delayMs: number, idleIntervalMs: number): void {
+    if (!this.loopEnabled) {
+      return;
+    }
+
+    this.timer = setTimeout(() => {
+      void this.runLoop(idleIntervalMs);
+    }, delayMs);
+    this.timer.unref?.();
+  }
+
+  private async runOnceWithResult(): Promise<MigrationBatchResult> {
+    if (this.running || !this.getMigrationConfig().enabled) {
+      return { migrated: 0, failed: 0, legacyTables: 0, retryableFailures: 0 };
+    }
+
+    this.running = true;
+    try {
+      return await this.migrateBatch();
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async migrateBatch(): Promise<MigrationBatchResult> {
     const currentDim = this.config.embedding?.dimension || 16;
     await this.renameOutdatedActiveTable(currentDim);
 
-    const batchSize = this.getMigrationConfig().batchSize;
+    const batchSize = this.getEffectiveBatchSize();
     const tables = await discoverMemoryTables(this.config.lancedbPath, currentDim);
     const legacyTables = tables.filter((table) => table.dimension !== currentDim);
     let migrated = 0;
     let failed = 0;
+    let retryableFailures = 0;
 
     if (legacyTables.length === 0) {
       this.debug?.basic('embedding_migration.skipped', { reason: 'no_legacy_tables' });
-      return;
+      return { migrated, failed, legacyTables: 0, retryableFailures };
     }
 
     this.debug?.basic('embedding_migration.start', { sourceTables: legacyTables.length, targetDimension: currentDim, batchSize });
@@ -108,7 +175,7 @@ export class EmbeddingMigrationWorker {
         try {
           const migratedRow = this.toMigratedRow(
             row,
-            await embedText(String(row.text || ''), this.config.embedding),
+            await this.embedLegacyText(String(row.text || '')),
           );
 
           await this.upsertCurrentRow(migratedRow);
@@ -118,6 +185,10 @@ export class EmbeddingMigrationWorker {
           this.debug?.verbose('embedding_migration.row', { memoryUid: String(row.memory_uid || ''), sourceDimension: tableInfo.dimension, targetDimension: currentDim });
         } catch (err) {
           failed += 1;
+          const isRateLimit = isRetryableRateLimitError(err);
+          if (isRateLimit) {
+            retryableFailures += 1;
+          }
           this.debug?.error('embedding_migration.error', {
             memoryUid: String(row.memory_uid || ''),
             sourceDimension: tableInfo.dimension,
@@ -129,6 +200,11 @@ export class EmbeddingMigrationWorker {
             + `from d${tableInfo.dimension} to d${currentDim}:`,
             err,
           );
+
+          if (isRateLimit) {
+            remaining = 0;
+            break;
+          }
         }
       }
 
@@ -136,6 +212,39 @@ export class EmbeddingMigrationWorker {
     }
 
     this.debug?.basic('embedding_migration.done', { migrated, failed, targetDimension: currentDim });
+    return { migrated, failed, legacyTables: legacyTables.length, retryableFailures };
+  }
+
+  private async embedLegacyText(text: string): Promise<number[]> {
+    let retryCount = 0;
+
+    while (true) {
+      await this.waitForEmbeddingSlot();
+      try {
+        return await this.requestEmbedding(text);
+      } catch (error) {
+        if (!isRetryableRateLimitError(error) || retryCount >= EMBEDDING_429_MAX_RETRIES) {
+          throw error;
+        }
+
+        const delayMs = EMBEDDING_429_BASE_BACKOFF_MS * (2 ** retryCount);
+        retryCount += 1;
+        this.debug?.warn('embedding_migration.retry_backoff', {
+          retryCount,
+          delayMs,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        await this.sleep(delayMs);
+      }
+    }
+  }
+
+  private async waitForEmbeddingSlot(): Promise<void> {
+    const waitMs = EMBEDDING_MIN_INTERVAL_MS - (Date.now() - this.lastEmbeddingAttemptAt);
+    if (waitMs > 0) {
+      await this.sleep(waitMs);
+    }
+    this.lastEmbeddingAttemptAt = Date.now();
   }
 
   private async backupLegacyTableIfEmpty(tableName: string, sourceTable: Awaited<ReturnType<typeof openMemoryTable>>): Promise<void> {
@@ -240,8 +349,21 @@ export class EmbeddingMigrationWorker {
       batchSize: this.config.embeddingMigration?.batchSize || DEFAULT_BATCH_SIZE,
     };
   }
+
+  private getEffectiveBatchSize(): number {
+    const configured = this.getMigrationConfig().batchSize;
+    if (this.config.embedding?.provider === 'voyage') {
+      return Math.min(configured, VOYAGE_MAX_BATCH_SIZE);
+    }
+    return configured;
+  }
 }
 
 function escapeSqlString(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+function isRetryableRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b429\b/.test(message) || /rate.?limit/i.test(message);
 }

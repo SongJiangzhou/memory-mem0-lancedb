@@ -8,6 +8,10 @@ import * as lancedb from '@lancedb/lancedb';
 import { openMemoryTable } from '../../src/db/table';
 import { EmbeddingMigrationWorker } from '../../src/hot/migration-worker';
 
+function serialTest(name: string, fn: (t: unknown) => void | Promise<void>): void {
+  test(name, { concurrency: 1 }, fn);
+}
+
 const baseConfig = {
   mem0BaseUrl: '',
   mem0ApiKey: '',
@@ -42,7 +46,7 @@ function makeLegacyRow(overrides?: Partial<Record<string, unknown>>) {
   };
 }
 
-test('migration worker moves legacy rows into the current-dimension table', async () => {
+serialTest('migration worker moves legacy rows into the current-dimension table', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -71,7 +75,7 @@ test('migration worker moves legacy rows into the current-dimension table', asyn
   }
 });
 
-test('migration worker renames a fully migrated legacy table to .bak and removes the .lance directory', async () => {
+serialTest('migration worker renames a fully migrated legacy table to .bak and removes the .lance directory', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -99,7 +103,7 @@ test('migration worker renames a fully migrated legacy table to .bak and removes
   }
 });
 
-test('migration worker migrates the legacy main table into the current embedding dimension and backs it up', async () => {
+serialTest('migration worker migrates the legacy main table into the current embedding dimension and backs it up', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -132,7 +136,7 @@ test('migration worker migrates the legacy main table into the current embedding
   }
 });
 
-test('migration worker keeps legacy rows when destination upsert fails', async () => {
+serialTest('migration worker keeps legacy rows when destination upsert fails', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -167,7 +171,7 @@ test('migration worker keeps legacy rows when destination upsert fails', async (
   }
 });
 
-test('migration worker exits quietly when there are no legacy tables', async () => {
+serialTest('migration worker exits quietly when there are no legacy tables', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -186,7 +190,145 @@ test('migration worker exits quietly when there are no legacy tables', async () 
   }
 });
 
-test('migration worker renames an outdated active table, recreates the current schema, and migrates rows back', async () => {
+serialTest('migration worker start triggers an immediate migration pass before the interval elapses', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyTable = await openMemoryTable(dir, 768);
+    await legacyTable.add([makeLegacyRow()]);
+
+    class SignalingWorker extends EmbeddingMigrationWorker {
+      private resolveMigrated!: () => void;
+      private readonly migratedSignal = new Promise<void>((resolve) => {
+        this.resolveMigrated = resolve;
+      });
+
+      get migrated(): Promise<void> {
+        return this.migratedSignal;
+      }
+
+      protected override async upsertCurrentRow(row: Record<string, unknown>): Promise<void> {
+        await super.upsertCurrentRow(row);
+        this.resolveMigrated();
+      }
+    }
+
+    const worker = new SignalingWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+    });
+
+    worker.start(60_000);
+    await Promise.race([
+      worker.migrated,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for immediate migration')), 500)),
+    ]);
+    worker.stop();
+
+    const currentTable = await openMemoryTable(dir, 16);
+    const migratedRows = await currentTable.query().where("memory_uid = 'memory-1'").toArray();
+    assert.equal(migratedRows.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+serialTest('migration worker retries 429 embedding failures with backoff and eventually migrates the row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyTable = await openMemoryTable(dir, 768);
+    await legacyTable.add([makeLegacyRow()]);
+
+    class RetryingWorker extends EmbeddingMigrationWorker {
+      public attempts = 0;
+      public sleeps: number[] = [];
+
+      protected override async requestEmbedding(): Promise<number[]> {
+        this.attempts += 1;
+        if (this.attempts < 3) {
+          throw new Error('Voyage embedding request failed with status 429');
+        }
+        return new Array<number>(16).fill(0.25);
+      }
+
+      protected override async sleep(ms: number): Promise<void> {
+        this.sleeps.push(ms);
+      }
+    }
+
+    const worker = new RetryingWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+    });
+
+    await worker.runOnce();
+
+    const currentTable = await openMemoryTable(dir, 16);
+    const migratedRows = await currentTable.query().where("memory_uid = 'memory-1'").toArray();
+
+    assert.equal(worker.attempts, 3);
+    assert.ok(worker.sleeps.includes(1000));
+    assert.ok(worker.sleeps.includes(2000));
+    assert.equal(migratedRows.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+serialTest('migration worker stops the current batch after a rate limit failure to cool down', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyTable = await openMemoryTable(dir, 768);
+    await legacyTable.add([
+      makeLegacyRow({ memory_uid: 'memory-1', lancedb_row_key: 'memory-1' }),
+      makeLegacyRow({ memory_uid: 'memory-2', lancedb_row_key: 'memory-2', text: 'User prefers warm weather' }),
+    ]);
+
+    class RateLimitedWorker extends EmbeddingMigrationWorker {
+      public attempts: string[] = [];
+
+      protected override async requestEmbedding(text: string): Promise<number[]> {
+        this.attempts.push(text);
+        if (text === 'User prefers warm weather') {
+          throw new Error('Voyage embedding request failed with status 429');
+        }
+        return new Array<number>(16).fill(0.5);
+      }
+
+      protected override async sleep(): Promise<void> {}
+    }
+
+    const worker = new RateLimitedWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      embedding: { provider: 'voyage' as const, baseUrl: 'https://api.voyageai.com/v1', apiKey: 'k', model: 'voyage-4-lite', dimension: 1024 },
+      embeddingMigration: { enabled: true, intervalMs: 60_000, batchSize: 20 },
+    });
+
+    await worker.runOnce();
+
+    const currentTable = await openMemoryTable(dir, 1024);
+    const migratedRows = await currentTable.query().toArray();
+    const refreshedLegacyTable = await openMemoryTable(dir, 768);
+    const legacyRows = await refreshedLegacyTable.query().toArray();
+
+    assert.equal(migratedRows.length, 1);
+    assert.equal(legacyRows.length, 1);
+    assert.deepEqual(worker.attempts, ['User prefers concise answers', 'User prefers warm weather', 'User prefers warm weather', 'User prefers warm weather', 'User prefers warm weather']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+serialTest('migration worker renames an outdated active table, recreates the current schema, and migrates rows back', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
@@ -237,7 +379,7 @@ test('migration worker renames an outdated active table, recreates the current s
   }
 });
 
-test('migration worker skips deleted and empty-text legacy rows', async () => {
+serialTest('migration worker skips deleted and empty-text legacy rows', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 
   try {
