@@ -180,3 +180,63 @@ test('capture sync skips semantic duplicates that share mem0 hash with a differe
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('capture sync rejects query-echo memories that only restate the latest user question', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'capture-sync-'));
+
+  try {
+    const auditStore = new FileAuditStore(join(dir, 'audit', 'memory_records.jsonl'));
+    const adapter = new InMemoryMemoryAdapter();
+
+    const result = await syncCapturedMemories({
+      memories: [createExtractedMemory({ text: 'What do I like at McDonalds?', categories: ['preference'], hash: 'hash-query-echo' })],
+      userId: 'user-1',
+      runId: 'run-1',
+      scope: 'long-term',
+      eventId: 'evt-capture-echo',
+      auditStore,
+      adapter,
+      tsEvent: '2026-03-07T12:00:00.000Z',
+      captureContext: {
+        latestUserMessage: 'What do I like at McDonalds?',
+        latestAssistantMessage: 'You like McFlurry.',
+      },
+    });
+
+    const records = await auditStore.readAll();
+    assert.equal(result.synced, 0);
+    assert.equal(records.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('capture sync rejects preference memories supported only by assistant output', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'capture-sync-'));
+
+  try {
+    const auditStore = new FileAuditStore(join(dir, 'audit', 'memory_records.jsonl'));
+    const adapter = new InMemoryMemoryAdapter();
+
+    const result = await syncCapturedMemories({
+      memories: [createExtractedMemory({ text: 'User likes McFlurry.', categories: ['preference'], hash: 'hash-mcflurry' })],
+      userId: 'user-1',
+      runId: 'run-1',
+      scope: 'long-term',
+      eventId: 'evt-capture-assistant-only',
+      auditStore,
+      adapter,
+      tsEvent: '2026-03-07T12:00:00.000Z',
+      captureContext: {
+        latestUserMessage: 'What do I like at McDonalds?',
+        latestAssistantMessage: 'You like McFlurry.',
+      },
+    });
+
+    const records = await auditStore.readAll();
+    assert.equal(result.synced, 0);
+    assert.equal(records.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

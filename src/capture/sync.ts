@@ -19,6 +19,10 @@ export async function syncCapturedMemories(params: {
   adapter: MemoryAdapter;
   tsEvent?: string;
   debug?: PluginDebugLogger;
+  captureContext?: {
+    latestUserMessage?: string;
+    latestAssistantMessage?: string;
+  };
 }): Promise<{ synced: number; memoryUids: string[] }> {
   const tsEvent = params.tsEvent || new Date().toISOString();
   const existingRows = await params.auditStore.readAll();
@@ -29,6 +33,15 @@ export async function syncCapturedMemories(params: {
   params.debug?.basic('capture_sync.start', { eventId: params.eventId, count: params.memories.length, scope: params.scope });
 
   for (const memory of params.memories) {
+    if (shouldRejectCapturedMemory(memory, params.captureContext)) {
+      params.debug?.verbose('capture_sync.rejected', {
+        eventId: params.eventId,
+        reason: inferRejectReason(memory, params.captureContext),
+        ...summarizeText(memory.text),
+      });
+      continue;
+    }
+
     const memoryPayload = toMemoryPayload(memory, params, tsEvent);
     const category = (memoryPayload.categories || ['general'])[0];
     const memoryUid = buildMemoryUid(
@@ -73,6 +86,86 @@ export async function syncCapturedMemories(params: {
 
   params.debug?.basic('capture_sync.done', { eventId: params.eventId, synced, total: params.memories.length });
   return { synced, memoryUids };
+}
+
+function shouldRejectCapturedMemory(
+  memory: Mem0ExtractedMemory,
+  captureContext?: { latestUserMessage?: string; latestAssistantMessage?: string },
+): boolean {
+  const memoryText = normalizeCaptureText(memory.text);
+  const latestUserMessage = normalizeCaptureText(captureContext?.latestUserMessage || '');
+  const latestAssistantMessage = normalizeCaptureText(captureContext?.latestAssistantMessage || '');
+
+  if (!memoryText) {
+    return true;
+  }
+
+  if (latestUserMessage && memoryText === latestUserMessage) {
+    return true;
+  }
+
+  const categories = new Set((memory.categories || []).map((item) => String(item || '').toLowerCase()));
+  const looksLikePreference = categories.has('preference') || /prefer|favorite|likes|like|喜欢|偏好|爱吃|爱喝/i.test(String(memory.text || ''));
+  const assistantSimilarity = similarityScore(memoryText, latestAssistantMessage);
+  const userSimilarity = similarityScore(memoryText, latestUserMessage);
+  const supportedByAssistantOnly = Boolean(
+    looksLikePreference &&
+    latestAssistantMessage &&
+    assistantSimilarity >= 0.5 &&
+    userSimilarity < 0.4,
+  );
+
+  return supportedByAssistantOnly;
+}
+
+function inferRejectReason(
+  memory: Mem0ExtractedMemory,
+  captureContext?: { latestUserMessage?: string; latestAssistantMessage?: string },
+): string {
+  const memoryText = normalizeCaptureText(memory.text);
+  const latestUserMessage = normalizeCaptureText(captureContext?.latestUserMessage || '');
+  if (memoryText && latestUserMessage && memoryText === latestUserMessage) {
+    return 'query_echo';
+  }
+  return 'assistant_only_preference';
+}
+
+function normalizeCaptureText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .trim();
+}
+
+function similarityScore(left: string, right: string): number {
+  if (!left || !right) {
+    return 0;
+  }
+
+  const common = longestCommonSubstringLength(left, right);
+  return common / Math.max(Math.min(left.length, right.length), 1);
+}
+
+function longestCommonSubstringLength(left: string, right: string): number {
+  if (!left || !right) {
+    return 0;
+  }
+
+  const dp = new Array(right.length + 1).fill(0);
+  let maxLength = 0;
+
+  for (let i = 1; i <= left.length; i++) {
+    for (let j = right.length; j >= 1; j--) {
+      if (left[i - 1] === right[j - 1]) {
+        dp[j] = dp[j - 1] + 1;
+        maxLength = Math.max(maxLength, dp[j]);
+      } else {
+        dp[j] = 0;
+      }
+    }
+  }
+
+  return maxLength;
 }
 
 function toMemoryPayload(

@@ -348,6 +348,10 @@ export default function register(api: OpenClawApi) {
             eventId: null,
             auditStore: new FileAuditStore(cfg.auditStorePath),
             adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
+            captureContext: {
+              latestUserMessage: payload.messages.find((message) => message.role === 'user')?.content,
+              latestAssistantMessage: payload.messages.find((message) => message.role === 'assistant')?.content,
+            },
             debug,
           });
           debug.basic('auto_capture.done', {
@@ -382,6 +386,10 @@ export default function register(api: OpenClawApi) {
               eventId: submitted.event_id,
               auditStore: new FileAuditStore(cfg.auditStorePath),
               adapter: new LanceDbMemoryAdapter(cfg.lancedbPath, cfg.embedding),
+              captureContext: {
+                latestUserMessage: payload.messages.find((message) => message.role === 'user')?.content,
+                latestAssistantMessage: payload.messages.find((message) => message.role === 'assistant')?.content,
+              },
               debug,
             });
             debug.basic('auto_capture.done', {
