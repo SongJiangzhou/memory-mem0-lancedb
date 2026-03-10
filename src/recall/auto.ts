@@ -1,5 +1,9 @@
 import type { AutoRecallConfig, SearchResult } from '../types';
 import { summarizeText, type PluginDebugLogger } from '../debug/logger';
+import { createLocalRecallReranker, type RecallReranker } from './reranker';
+
+const RECALL_FETCH_MULTIPLIER = 4;
+const RECALL_FETCH_MIN = 12;
 
 export function buildAutoRecallBlock(memories: SearchResult['memories'], config: AutoRecallConfig, source?: string): string {
   if (!memories.length) {
@@ -59,6 +63,7 @@ export async function runAutoRecall(params: {
   userId: string;
   config: AutoRecallConfig;
   debug?: PluginDebugLogger;
+  reranker?: RecallReranker;
   search: (input: { query: string; userId: string; topK: number; filters?: { scope?: string } }) => Promise<SearchResult>;
 }): Promise<{ block: string; source: string }> {
   if (!params.config.enabled) {
@@ -73,10 +78,11 @@ export async function runAutoRecall(params: {
     ...summarizeText(params.query),
   });
 
+  const candidateTopK = Math.max(params.config.topK * RECALL_FETCH_MULTIPLIER, params.config.topK, RECALL_FETCH_MIN);
   const result = await params.search({
     query: params.query,
     userId: params.userId,
-    topK: params.config.topK,
+    topK: candidateTopK,
     filters: params.config.scope === 'long-term' ? { scope: 'long-term' } : undefined,
   });
 
@@ -85,13 +91,15 @@ export async function runAutoRecall(params: {
     return { block: '', source: result.source };
   }
 
-  const block = buildAutoRecallBlock(result.memories, params.config, result.source);
+  const reranker = params.reranker || createLocalRecallReranker();
+  const selectedMemories = reranker.rerank(result.memories, params.query);
+  const block = buildAutoRecallBlock(selectedMemories, params.config, result.source);
   params.debug?.basic('auto_recall.done', {
     source: result.source,
-    hits: result.memories.length,
+    hits: selectedMemories.length,
     injectedChars: block.length,
   });
-  result.memories.forEach((memory) => {
+  selectedMemories.forEach((memory) => {
     params.debug?.verbose('auto_recall.memory', {
       memoryUid: memory.memory_uid,
       scope: memory.scope,

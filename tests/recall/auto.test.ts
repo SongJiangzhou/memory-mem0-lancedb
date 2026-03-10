@@ -3,9 +3,14 @@ import test from 'node:test';
 
 import { PluginDebugLogger } from '../../src/debug/logger';
 import { buildAutoRecallBlock, runAutoRecall } from '../../src/recall/auto';
+import type { RecallReranker } from '../../src/recall/reranker';
 import type { AutoRecallConfig, MemoryRecord } from '../../src/types';
 
-function buildMemory(text: string, scope: 'long-term' | 'session' = 'long-term'): MemoryRecord {
+function buildMemory(
+  text: string,
+  scope: 'long-term' | 'session' = 'long-term',
+  overrides?: Partial<MemoryRecord>,
+): MemoryRecord {
   return {
     memory_uid: `m-${text}`,
     user_id: 'user-1',
@@ -21,6 +26,7 @@ function buildMemory(text: string, scope: 'long-term' | 'session' = 'long-term')
     openclaw_refs: { file_path: 'MEMORY.md' },
     mem0: {},
     lancedb: {},
+    ...overrides,
   };
 }
 
@@ -104,6 +110,128 @@ test('runAutoRecall applies topK and maxChars constraints', async () => {
   assert.doesNotMatch(result.block, /User likes sci-fi movies/);
   assert.ok(result.block.length <= 200);
   assert.equal(result.source, 'lancedb');
+});
+
+test('runAutoRecall fetches a wider candidate pool than the final injected topK', async () => {
+  let requestedTopK = 0;
+
+  await runAutoRecall({
+    query: 'What do I prefer to drink?',
+    userId: 'user-1',
+    config: buildConfig({ topK: 2, maxChars: 200 }),
+    search: async (input) => {
+      requestedTopK = input.topK;
+      return {
+        memories: [buildMemory('User prefers Coke over Pepsi')],
+        source: 'lancedb',
+      };
+    },
+  });
+
+  assert.ok(requestedTopK > 2);
+});
+
+test('runAutoRecall reranks entity-matching memories ahead of generic domain matches', async () => {
+  const result = await runAutoRecall({
+    query: 'What do I like at McDonalds?',
+    userId: 'user-1',
+    config: buildConfig({ topK: 1, maxChars: 200 }),
+    search: async () => ({
+      memories: [
+        buildMemory('User likes KFC egg tarts'),
+        buildMemory('User likes McDonalds grilled chicken burger'),
+        buildMemory('User likes Coke'),
+      ],
+      source: 'lancedb',
+    }),
+  });
+
+  assert.match(result.block, /McDonalds grilled chicken burger/);
+  assert.doesNotMatch(result.block, /KFC egg tarts/);
+});
+
+test('runAutoRecall supports injected rerankers for future extension', async () => {
+  let invoked = false;
+  const reranker: RecallReranker = {
+    rerank(memories) {
+      invoked = true;
+      return [memories[1], memories[0]].filter(Boolean);
+    },
+  };
+
+  const result = await runAutoRecall({
+    query: 'Which soda do I prefer?',
+    userId: 'user-1',
+    config: buildConfig({ topK: 1, maxChars: 200 }),
+    reranker,
+    search: async () => ({
+      memories: [
+        buildMemory('User prefers Pepsi'),
+        buildMemory('User prefers Coke'),
+      ],
+      source: 'lancedb',
+    }),
+  });
+
+  assert.equal(invoked, true);
+  assert.match(result.block, /User prefers Coke/);
+});
+
+test('runAutoRecall reranks lowercase english entity queries without stopword stripping rules', async () => {
+  const result = await runAutoRecall({
+    query: 'what do i like at mcdonalds',
+    userId: 'user-1',
+    config: buildConfig({ topK: 1, maxChars: 200 }),
+    search: async () => ({
+      memories: [
+        buildMemory('User likes KFC egg tarts'),
+        buildMemory('User likes McDonalds grilled chicken burger'),
+        buildMemory('User likes Coke'),
+      ],
+      source: 'lancedb',
+    }),
+  });
+
+  assert.match(result.block, /McDonalds grilled chicken burger/);
+  assert.doesNotMatch(result.block, /KFC egg tarts/);
+});
+
+test('runAutoRecall downranks query echo memories', async () => {
+  const result = await runAutoRecall({
+    query: 'What do I like at McDonalds?',
+    userId: 'user-1',
+    config: buildConfig({ topK: 1, maxChars: 200 }),
+    search: async () => ({
+      memories: [
+        buildMemory('What do I like at McDonalds?'),
+        buildMemory('User likes McDonalds grilled chicken burger'),
+      ],
+      source: 'lancedb',
+    }),
+  });
+
+  assert.match(result.block, /McDonalds grilled chicken burger/);
+  assert.doesNotMatch(result.block, /^.*What do I like at McDonalds\?.*$/m);
+});
+
+test('runAutoRecall downranks operational path noise behind relevant preferences', async () => {
+  const result = await runAutoRecall({
+    query: 'What do I like at McDonalds?',
+    userId: 'user-1',
+    config: buildConfig({ topK: 2, maxChars: 200 }),
+    search: async () => ({
+      memories: [
+        buildMemory('Data written to /workspace/data/stock_daily/2026-03-10.jsonl'),
+        buildMemory('User likes McDonalds grilled chicken burger'),
+        buildMemory('User likes McDonalds McFlurry'),
+      ],
+      source: 'lancedb',
+    }),
+  });
+
+  const lines = result.block.split('\n').filter((line) => line.startsWith('- '));
+  assert.match(lines[0] || '', /McDonalds grilled chicken burger/);
+  assert.doesNotMatch(result.block, /stock_daily/);
 });
 
 test('runAutoRecall returns empty block when search result is empty', async () => {
