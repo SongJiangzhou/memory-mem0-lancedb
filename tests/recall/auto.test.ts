@@ -144,11 +144,11 @@ test('buildRecallQueryVariants extracts a focused retrieval query from longer pr
 
 test('buildRecallQueryVariants strips host metadata wrappers before compression', () => {
   const variants = buildRecallQueryVariants(
-    '***REMOVED***\n***REMOVED***\n***REMOVED***\n***REMOVED***\n\nSender (untrusted metadata):',
+    '***REMOVED***\n***REMOVED***\n***REMOVED***\n***REMOVED***\n\n***REMOVED***',
   );
 
   assert.ok(variants.every((variant: RecallQueryVariant) => !/Sender \(untrusted metadata\)/i.test(variant.text)));
-  assert.ok(variants.some((variant: RecallQueryVariant) => /我喜欢吃麦当劳的哪些食物/.test(variant.text)));
+  assert.ok(variants.some((variant: RecallQueryVariant) => /What foods do I like at McDonalds\?/i.test(variant.text)));
 });
 
 test('runAutoRecall merges multi-query candidates so compressed queries can rescue relevant memories', async () => {
@@ -172,8 +172,8 @@ test('runAutoRecall merges multi-query candidates so compressed queries can resc
 
       return {
         memories: [
-          buildMemory('User likes Zelda games'),
-          buildMemory('User likes Mario'),
+          buildMemory('User likes strategy games'),
+          buildMemory('User likes puzzle games'),
         ],
         source: 'lancedb',
       };
@@ -182,7 +182,7 @@ test('runAutoRecall merges multi-query candidates so compressed queries can resc
 
   assert.ok(queries.length > 1);
   assert.match(result.block, /McDonalds/);
-  assert.doesNotMatch(result.block, /Zelda|Mario/);
+  assert.doesNotMatch(result.block, /strategy games|puzzle games/);
 });
 
 test('runAutoRecall reranks entity-matching memories ahead of generic domain matches', async () => {

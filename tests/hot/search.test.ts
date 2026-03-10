@@ -246,26 +246,26 @@ test('hot plane password-style question prefers the memory containing the exact 
     const hot = new HotMemorySearch(cfg);
 
     await store.execute({
-      text: '11:56 做 mem0 本地机制 E2E 时设置的测试口令是 mem0-local-e2e-20260308-1156-ZP4M。',
+      text: 'The test passcode set during the local mem0 E2E run at 11:56 was mem0-local-e2e-20260308-1156-ZP4M.',
       userId: 'user-1',
       scope: 'long-term',
       categories: ['token'],
     });
     await store.execute({
-      text: '11:56 做 mem0 本地机制 E2E，验证了自动提取和自动召回链路，但没有记录最终口令。',
+      text: 'At 11:56, the local mem0 E2E run verified auto-capture and auto-recall, but did not record the final passcode.',
       userId: 'user-1',
       scope: 'long-term',
       categories: ['summary'],
     });
     await store.execute({
-      text: 'mem0 本地机制 E2E 复盘：主要问题在排序和融合策略，不在写入链路。',
+      text: 'Local mem0 E2E retrospective: the main issue was ranking and fusion strategy, not the write path.',
       userId: 'user-1',
       scope: 'long-term',
       categories: ['analysis'],
     });
 
     const result = await hot.search({
-      query: '11:56 做 mem0本地机制E2E 时设置的测试口令是什么',
+      query: 'What passcode was set during the local mem0 E2E run at 11:56?',
       userId: 'user-1',
       topK: 5,
       filters: { scope: 'long-term' },
@@ -310,7 +310,7 @@ test('hot plane ranking penalizes metadata and test-token noise for non-credenti
       },
       {
         memory_uid: 'user-preference',
-        text: 'User likes Nintendo games and Mario titles.',
+        text: 'User likes strategy games and puzzle titles.',
         categories: ['preference', 'game'],
         ts_event: now,
         __rrf_score: 0.45,
@@ -349,7 +349,7 @@ test('hot plane preference intent reranking boosts preference memories for game-
       },
       {
         memory_uid: 'game-preference',
-        text: 'User likes Nintendo games, including Mario and Zelda titles.',
+        text: 'User likes strategy games, including city-builders and turn-based tactics.',
         categories: ['preference', 'game'],
         ts_event: now,
         __rrf_score: 0.4,

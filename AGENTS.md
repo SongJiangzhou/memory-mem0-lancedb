@@ -130,3 +130,10 @@ export class ToolName {
 - `@lancedb/lancedb`: Vector database for local memory storage
 - `node:test`, `node:assert`: Built-in testing (no jest/vitest)
 - Native `fetch()` for HTTP requests (Node 18+)
+
+## Privacy And Test Data
+
+- Never commit personal sensitive information, real API keys, usernames, home paths, or user-specific preferences into source, tests, docs, or fixtures.
+- When replacing sensitive examples, use generic English placeholder content by default.
+- New and updated tests must use English sample text unless a multilingual behavior is the thing under test.
+- If debugging requires live user data, keep it out of the repo and summarize it in sanitized form before writing code or docs.

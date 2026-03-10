@@ -8,7 +8,7 @@ Improve automatic recall quality for local memory retrieval without introducing:
 - a new cloud reranker API
 - language-specific word lists or stopword stripping rules
 
-The immediate target is to make brand/entity-constrained queries such as `我喜欢麦当劳的什么` rank the correct memory ahead of other food-related memories, while preserving low operational complexity.
+The immediate target is to make brand/entity-constrained queries such as `What foods do I like at McDonalds?` rank the correct memory ahead of other food-related memories, while preserving low operational complexity.
 
 ## Problem
 
@@ -153,7 +153,7 @@ Trade-offs:
 Add and keep tests for:
 
 - widened candidate retrieval vs final injection count
-- entity-specific reranking for Chinese queries
+- entity-specific reranking for representative multilingual queries
 - lowercase English phrasing without stopword stripping
 - custom reranker injection
 - budget-aware block generation
@@ -173,4 +173,3 @@ The design intentionally leaves space for stronger rerankers:
 - cross-encoder or cloud reranker via the same interface
 
 These should replace the local heuristic implementation behind `RecallReranker`, not add another parallel ranking path.
-

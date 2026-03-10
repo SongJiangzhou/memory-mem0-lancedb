@@ -536,8 +536,8 @@ test('before_prompt_build injects pending capture notification into prependSyste
     );
 
     const event = {
-      prompt: '我喜欢吃什么',
-      messages: [{ role: 'user', content: '我喜欢吃什么' }],
+      prompt: 'What foods do I like?',
+      messages: [{ role: 'user', content: 'What foods do I like?' }],
     };
     const result = await recallHook?.handler(
       event,
@@ -896,11 +896,11 @@ test('auto-capture hook strips host metadata and reply markers before submission
           {
             role: 'user',
             content:
-              'Conversation info (untrusted metadata):\n***REMOVED***\n{"message_id":"1"}\n***REMOVED***\n\n我在一家科技公司上班，办公地点在某园区A区',
+              'Conversation info (untrusted metadata):\n***REMOVED***\n{"message_id":"1"}\n***REMOVED***\n\nI work at a technology company in office zone A.',
           },
           {
             role: 'assistant',
-            content: '[[reply_to_current]] 记住了。\n\n你在一家科技公司上班，办公地点在某园区A区。',
+            content: '[[reply_to_current]] Noted.\n\nYou work at a technology company in office zone A.',
           },
         ],
         success: true,
@@ -911,7 +911,7 @@ test('auto-capture hook strips host metadata and reply markers before submission
     assert.ok(capturedPayload !== null, 'expected capture payload to be submitted');
     const messages = (capturedPayload as any)?.messages as Array<{ role: string; content: string }>;
     assert.deepEqual(messages, [
-      { role: 'user', content: '我在一家科技公司上班，办公地点在某园区A区' },
+      { role: 'user', content: 'I work at a technology company in office zone A.' },
     ]);
   } finally {
     global.fetch = originalFetch;
