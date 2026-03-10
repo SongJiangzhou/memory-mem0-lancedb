@@ -250,7 +250,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
   const existingReranker = existingConfig?.autoRecall?.reranker || {};
   const memoryRoot = path.join(os.homedir(), '.openclaw', 'workspace', 'data', 'memory');
   const mem0Mode = await select({
-    message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, existingMem0.mode != null, strings),
+    message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, strings),
     options: [
       { value: 'local', label: strings.choices.mem0Local },
       { value: 'remote', label: strings.choices.mem0Remote },
@@ -263,39 +263,45 @@ export async function promptForConfig(strings, existingConfig = {}) {
   let mem0BaseUrl = 'https://api.mem0.ai';
   let mem0ApiKey = '';
   if (mem0Mode === 'local') {
+    const currentLocalUrl = existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000';
     const value = await text({
-      message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', existingMem0.mode === 'local' && existingMem0.baseUrl != null, strings),
-      defaultValue: existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000',
+      message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', strings),
+      placeholder: currentLocalUrl,
     });
     if (isCancel(value)) process.exit(1);
-    mem0BaseUrl = value;
+    mem0BaseUrl = resolveTextPromptValue(value, currentLocalUrl);
   } else if (mem0Mode === 'remote') {
     mem0BaseUrl = existingMem0.mode === 'remote' ? existingMem0.baseUrl || 'https://api.mem0.ai' : 'https://api.mem0.ai';
+    const currentApiKey = existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '';
     const value = await text({
-      message: withDefaultHint(strings.mem0ApiKey, '', existingMem0.mode === 'remote' && existingMem0.apiKey != null, strings),
-      defaultValue: existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '',
+      message: withDefaultHint(strings.mem0ApiKey, '', strings),
+      placeholder: currentApiKey,
     });
     if (isCancel(value)) process.exit(1);
-    mem0ApiKey = value;
+    mem0ApiKey = resolveTextPromptValue(value, currentApiKey);
   }
 
   const autoRecallEnabled = await confirm({
-    message: withDefaultHint(strings.autoRecall, 'true', existingAutoRecall.enabled != null, strings),
+    message: withDefaultHint(strings.autoRecall, 'true', strings),
     initialValue: existingAutoRecall.enabled ?? true,
   });
   if (isCancel(autoRecallEnabled)) process.exit(1);
+  const currentTopK = String(existingAutoRecall.topK ?? 8);
   const autoRecallTopK = autoRecallEnabled
     ? Number(await text({
-      message: withDefaultHint(strings.autoRecallTopK, '8', existingAutoRecall.topK != null, strings),
-      defaultValue: String(existingAutoRecall.topK ?? 8),
+      message: withDefaultHint(strings.autoRecallTopK, '8', strings),
+      placeholder: currentTopK,
     }))
-    : Number(existingAutoRecall.topK ?? 8);
+    : Number(currentTopK);
+  const resolvedAutoRecallTopK = autoRecallEnabled ? resolveNumericPromptValue(autoRecallTopK, currentTopK) : Number(currentTopK);
+  const currentMaxChars = String(existingAutoRecall.maxChars ?? 1400);
   const autoRecallMaxChars = autoRecallEnabled
     ? Number(await text({
-      message: withDefaultHint(strings.autoRecallMaxChars, '1400', existingAutoRecall.maxChars != null, strings),
-      defaultValue: String(existingAutoRecall.maxChars ?? 1400),
+      message: withDefaultHint(strings.autoRecallMaxChars, '1400', strings),
+      placeholder: currentMaxChars,
     }))
-    : Number(existingAutoRecall.maxChars ?? 1400);
+    : Number(currentMaxChars);
+  const resolvedAutoRecallMaxChars = autoRecallEnabled ? resolveNumericPromptValue(autoRecallMaxChars, currentMaxChars) : Number(currentMaxChars);
   let autoRecallScope = existingAutoRecall.scope || 'all';
   let autoRecallRerankerProvider = existingReranker.provider || 'local';
   let autoRecallRerankerBaseUrl = existingReranker.baseUrl || 'https://api.voyageai.com/v1';
@@ -303,7 +309,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
   let autoRecallRerankerModel = existingReranker.model || 'rerank-2.5-lite';
   if (autoRecallEnabled) {
     autoRecallScope = await select({
-      message: withDefaultHint(strings.autoRecallScope, strings.choices.recallAll, existingAutoRecall.scope != null, strings),
+      message: withDefaultHint(strings.autoRecallScope, strings.choices.recallAll, strings),
       options: [
         { value: 'all', label: strings.choices.recallAll },
         { value: 'long-term', label: strings.choices.recallLongTerm },
@@ -313,7 +319,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     if (isCancel(autoRecallScope)) process.exit(1);
 
     autoRecallRerankerProvider = await select({
-      message: withDefaultHint(strings.autoRecallRerankerProvider, strings.choices.rerankerLocal, existingReranker.provider != null, strings),
+      message: withDefaultHint(strings.autoRecallRerankerProvider, strings.choices.rerankerLocal, strings),
       options: [
         { value: 'local', label: strings.choices.rerankerLocal },
         { value: 'voyage', label: strings.choices.rerankerVoyage },
@@ -324,31 +330,34 @@ export async function promptForConfig(strings, existingConfig = {}) {
     if (isCancel(autoRecallRerankerProvider)) process.exit(1);
 
     if (autoRecallRerankerProvider === 'voyage') {
+      const currentRerankerBaseUrl = autoRecallRerankerBaseUrl;
       const baseUrl = await text({
-        message: withDefaultHint(strings.autoRecallRerankerBaseUrl, 'https://api.voyageai.com/v1', existingReranker.baseUrl != null, strings),
-        defaultValue: autoRecallRerankerBaseUrl,
+        message: withDefaultHint(strings.autoRecallRerankerBaseUrl, 'https://api.voyageai.com/v1', strings),
+        placeholder: currentRerankerBaseUrl,
       });
       if (isCancel(baseUrl)) process.exit(1);
-      autoRecallRerankerBaseUrl = baseUrl;
+      autoRecallRerankerBaseUrl = resolveTextPromptValue(baseUrl, currentRerankerBaseUrl);
 
+      const currentRerankerApiKey = autoRecallRerankerApiKey;
       const apiKey = await text({
-        message: withDefaultHint(strings.autoRecallRerankerApiKey, '', existingReranker.apiKey != null, strings),
-        defaultValue: autoRecallRerankerApiKey,
+        message: withDefaultHint(strings.autoRecallRerankerApiKey, '', strings),
+        placeholder: currentRerankerApiKey,
       });
       if (isCancel(apiKey)) process.exit(1);
-      autoRecallRerankerApiKey = apiKey;
+      autoRecallRerankerApiKey = resolveTextPromptValue(apiKey, currentRerankerApiKey);
 
+      const currentRerankerModel = autoRecallRerankerModel;
       const model = await text({
-        message: withDefaultHint(strings.autoRecallRerankerModel, 'rerank-2.5-lite', existingReranker.model != null, strings),
-        defaultValue: autoRecallRerankerModel,
+        message: withDefaultHint(strings.autoRecallRerankerModel, 'rerank-2.5-lite', strings),
+        placeholder: currentRerankerModel,
       });
       if (isCancel(model)) process.exit(1);
-      autoRecallRerankerModel = model;
+      autoRecallRerankerModel = resolveTextPromptValue(model, currentRerankerModel);
     }
   }
 
   const autoCaptureEnabled = await confirm({
-    message: withDefaultHint(strings.autoCapture, 'false', existingAutoCapture.enabled != null, strings),
+    message: withDefaultHint(strings.autoCapture, 'false', strings),
     initialValue: existingAutoCapture.enabled ?? false,
   });
   if (isCancel(autoCaptureEnabled)) process.exit(1);
@@ -357,7 +366,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
   let autoCaptureMaxChars = Number(existingAutoCapture.maxCharsPerMessage ?? 2000);
   if (autoCaptureEnabled) {
     autoCaptureScope = await select({
-      message: withDefaultHint(strings.autoCaptureScope, strings.choices.captureLongTerm, existingAutoCapture.scope != null, strings),
+      message: withDefaultHint(strings.autoCaptureScope, strings.choices.captureLongTerm, strings),
       options: [
         { value: 'long-term', label: strings.choices.captureLongTerm },
         { value: 'session', label: strings.choices.captureSession },
@@ -366,18 +375,19 @@ export async function promptForConfig(strings, existingConfig = {}) {
     });
     if (isCancel(autoCaptureScope)) process.exit(1);
     autoCaptureRequireReply = await confirm({
-      message: withDefaultHint(strings.autoCaptureRequireReply, 'true', existingAutoCapture.requireAssistantReply != null, strings),
+      message: withDefaultHint(strings.autoCaptureRequireReply, 'true', strings),
       initialValue: autoCaptureRequireReply,
     });
     if (isCancel(autoCaptureRequireReply)) process.exit(1);
-    autoCaptureMaxChars = Number(await text({
-      message: withDefaultHint(strings.autoCaptureMaxChars, '2000', existingAutoCapture.maxCharsPerMessage != null, strings),
-      defaultValue: String(autoCaptureMaxChars),
-    }));
+    const currentAutoCaptureMaxChars = String(autoCaptureMaxChars);
+    autoCaptureMaxChars = resolveNumericPromptValue(Number(await text({
+      message: withDefaultHint(strings.autoCaptureMaxChars, '2000', strings),
+      placeholder: currentAutoCaptureMaxChars,
+    })), currentAutoCaptureMaxChars);
   }
 
   const debugChoice = await select({
-    message: withDefaultHint(strings.debugMode, strings.choices.debugBasic, existingDebug.mode != null || existingDebug.logDir != null, strings),
+    message: withDefaultHint(strings.debugMode, strings.choices.debugBasic, strings),
     options: [
       { value: 'basic', label: strings.choices.debugBasic },
       { value: 'off', label: strings.choices.debugOff },
@@ -389,12 +399,13 @@ export async function promptForConfig(strings, existingConfig = {}) {
   if (isCancel(debugChoice)) process.exit(1);
   let debugLogDir;
   if (debugChoice === 'verbose-file') {
+    const currentDebugLogDir = existingDebug.logDir || '~/.openclaw/workspace/logs/openclaw-mem0-lancedb';
     const value = await text({
-      message: withDefaultHint(strings.debugLogDir, '~/.openclaw/workspace/logs/openclaw-mem0-lancedb', existingDebug.logDir != null, strings),
-      defaultValue: existingDebug.logDir || '~/.openclaw/workspace/logs/openclaw-mem0-lancedb',
+      message: withDefaultHint(strings.debugLogDir, '~/.openclaw/workspace/logs/openclaw-mem0-lancedb', strings),
+      placeholder: currentDebugLogDir,
     });
     if (isCancel(value)) process.exit(1);
-    debugLogDir = value;
+    debugLogDir = resolveTextPromptValue(value, currentDebugLogDir);
   }
 
   return {
@@ -412,8 +423,8 @@ export async function promptForConfig(strings, existingConfig = {}) {
     },
     autoRecall: {
       enabled: autoRecallEnabled,
-      topK: autoRecallTopK,
-      maxChars: autoRecallMaxChars,
+      topK: resolvedAutoRecallTopK,
+      maxChars: resolvedAutoRecallMaxChars,
       scope: autoRecallScope,
       reranker: {
         provider: autoRecallRerankerProvider,
@@ -435,13 +446,17 @@ export function getExistingPluginConfig(openclawConfig) {
   return openclawConfig?.plugins?.entries?.[PLUGIN_NAME]?.config || {};
 }
 
-export function withDefaultHint(message, defaultValue, hasExistingValue, strings) {
-  if (hasExistingValue) {
-    return message;
-  }
-
+export function withDefaultHint(message, defaultValue, strings) {
   const prefix = isChineseStrings(strings) ? '默认' : 'default';
   return `${message} ${styleText('dim', `(${prefix}: ${defaultValue})`)}`;
+}
+
+export function resolveTextPromptValue(value, fallback) {
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+export function resolveNumericPromptValue(value, fallback) {
+  return Number.isFinite(value) ? value : Number(fallback);
 }
 
 function isChineseStrings(strings) {

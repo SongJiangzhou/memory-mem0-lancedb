@@ -163,15 +163,26 @@ serialTest('buildDefaultPluginConfig preserves an existing reranker api key even
   assert.equal(config.autoRecall.reranker.apiKey, 'existing-rerank-key');
 });
 
-serialTest('withDefaultHint appends a default label only when there is no existing value', async () => {
+serialTest('resolve prompt helpers fall back to current values for blank input', async () => {
   const installer = await import(INSTALLER_PATH);
-  const english = installer.withDefaultHint('Max memories to inject (topK)', '8', false, { intro: 'installer' });
-  const chinese = installer.withDefaultHint('最大注入记忆条数 (topK)', '8', false, { intro: '安装器' });
-  const existing = installer.withDefaultHint('Max memories to inject (topK)', '8', true, { intro: 'installer' });
+  const textFallback = installer.resolveTextPromptValue('', '8');
+  const textValue = installer.resolveTextPromptValue('16', '8');
+  const numericFallback = installer.resolveNumericPromptValue(Number.NaN, '8');
+  const numericValue = installer.resolveNumericPromptValue(16, '8');
+
+  assert.equal(textFallback, '8');
+  assert.equal(textValue, '16');
+  assert.equal(numericFallback, 8);
+  assert.equal(numericValue, 16);
+});
+
+serialTest('withDefaultHint appends the configured default label to prompt titles', async () => {
+  const installer = await import(INSTALLER_PATH);
+  const english = installer.withDefaultHint('Max memories to inject (topK)', '8', { intro: 'installer' });
+  const chinese = installer.withDefaultHint('最大注入记忆条数 (topK)', '8', { intro: '安装器' });
 
   assert.match(english, /default: 8/);
   assert.match(chinese, /默认: 8/);
-  assert.equal(existing, 'Max memories to inject (topK)');
 });
 
 serialTest('install.mjs --yes keeps an existing remote mem0 api key', () => {

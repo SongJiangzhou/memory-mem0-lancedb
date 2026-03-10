@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -185,6 +185,35 @@ serialTest('migration worker exits quietly when there are no legacy tables', asy
     });
 
     await assert.doesNotReject(async () => worker.runOnce());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+serialTest('migration worker writes a status snapshot into the lancedb directory', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyTable = await openMemoryTable(dir, 768);
+    await legacyTable.add([makeLegacyRow()]);
+
+    const worker = new EmbeddingMigrationWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+    });
+
+    await worker.runOnce();
+
+    const statusPath = join(dir, 'embedding_migration_status.json');
+    assert.equal(existsSync(statusPath), true);
+
+    const snapshot = JSON.parse(readFileSync(statusPath, 'utf8'));
+    assert.equal(snapshot.currentDimension, 16);
+    assert.equal(snapshot.phase, 'done');
+    assert.equal(snapshot.currentTableRows, 1);
+    assert.equal(snapshot.legacyRowCount, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
