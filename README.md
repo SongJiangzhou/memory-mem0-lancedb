@@ -1,28 +1,98 @@
-# Mem0 + LanceDB OpenClaw Memory Plugin
+<div align="center">
+  <h1>OpenClaw Memory Plugin</h1>
+  <p><strong>🧠 Supercharge your AI Agents with Persistent, Smart Memory 🧠</strong></p>
+  <p>
+    <a href="./README.zh-CN.md">中文说明 (Chinese)</a>
+  </p>
+</div>
 
-[中文说明](./README.zh-CN.md)
+---
 
-An OpenClaw memory plugin that uses Mem0 as the control plane and LanceDB as the retrieval layer.
+**OpenClaw-Mem0-LanceDB** is an advanced memory plugin that gives your OpenClaw agents long-term recall and continuous learning capabilities. It seamlessly combines **[Mem0](https://github.com/mem0ai/mem0)** as the intelligent control plane for memory extraction/management and **[LanceDB](https://github.com/lancedb/lancedb)** as the ultra-fast retrieval hot plane using vector and full-text search.
 
-Current embedded architecture:
+Whether you are a beginner looking to give your agent a persistent identity, or a senior engineer building scalable multi-agent systems, this plugin scales with your needs.
 
-- `audit plane`: file-first audit log under `auditStorePath`
-- `control plane`: Mem0 client and sync state
-- `hot plane`: LanceDB FTS + vector + hybrid RRF retrieval
-- Canonical schema: `src/schema/memory_record.schema.json`
+---
 
-## Installation
+## 🏗️ Architecture Overview
 
-***REMOVED***bash
+The plugin employs a **Tri-Plane Embedded Architecture** designed for reliability, fast retrieval, and ultimate auditability.
+
+```mermaid
+graph TD
+    classDef plane fill:#2d3748,stroke:#4a5568,stroke-width:2px,color:#fff;
+    classDef component fill:#4299e1,stroke:#2b6cb0,stroke-width:2px,color:#fff;
+    classDef db fill:#48bb78,stroke:#2f855a,stroke-width:2px,color:#fff;
+
+    subgraph AgentSpace [OpenClaw Agent]
+        A(User Input)
+        B(Agent Tools)
+        Hooks(Lifecycle Hooks)
+    end
+    
+    subgraph Plugin [OpenClaw Memory Plugin]
+        direction TB
+        
+        subgraph HotPlane [🔥 Hot Plane - LanceDB]
+            class HotPlane plane
+            LDB[Hybrid RRF Retrieval]:::db
+            VIdx[Vector Index]
+            FTS[Full Text Search]
+            LDB --- VIdx
+            LDB --- FTS
+        end
+        
+        subgraph ControlPlane [🧠 Control Plane - Mem0]
+            class ControlPlane plane
+            MClient[Mem0 Gateway]:::component
+            PWorker[Sync Poller]
+            MClient --- AutoCapture
+        end
+        
+        subgraph AuditPlane [📝 Audit Plane - File System]
+            class AuditPlane plane
+            ALog[(JSONL Audit Log)]:::db
+            Outbox(Sync Outbox)
+        end
+    end
+
+    A --> Hooks
+    B -- memoryStore --> AuditPlane
+    B -- memorySearch --> HotPlane
+    
+    Hooks -- Auto Capture --> ControlPlane
+    Hooks -- Auto Recall --> HotPlane
+    
+    AuditPlane -. Async Sync .-> ControlPlane
+    ControlPlane -. Extract & Sync .-> HotPlane
+    HotPlane -. Fallback .-> ControlPlane
+```
+
+### The Three Planes
+1. **📝 Audit Plane (Source of Truth)**: A file-first, append-only JSONL log (`auditStorePath`). It ensures no memory is lost and provides a human-readable tracing mechanism.
+2. **🔥 Hot Plane (Retrieval Layer)**: Powered by LanceDB, it provides blazing fast Hybrid Search (Vector + Full-Text Search + Reciprocal Rank Fusion) for immediate context recall.
+3. **🧠 Control Plane (Intelligence Layer)**: Uses Mem0 (Local or Remote) to intelligently extract entities, preferences, and facts from conversations, and handles cross-device synchronization.
+
+---
+
+## 🚀 Quick Start (For Beginners)
+
+Get your agent remembering in seconds!
+
+### 1. Installation
+
+Run the installation script in your OpenClaw workspace:
+
+```bash
 cd plugins/openclaw-mem0-lancedb
 bash scripts/install.sh
-***REMOVED***
+```
 
-## Configuration
+### 2. Configuration
 
-Add the plugin entry to `openclaw.json`:
+Add the plugin to your `openclaw.json` config file. Here is the minimal recommended setup using a local Mem0 server:
 
-***REMOVED***
+```json
 {
   "plugins": {
     "slots": {
@@ -41,35 +111,37 @@ Add the plugin entry to `openclaw.json`:
           "outboxDbPath": "~/.openclaw/workspace/data/memory/outbox.json",
           "auditStorePath": "~/.openclaw/workspace/data/memory/audit/memory_records.jsonl",
           "autoRecall": {
-            "enabled": false,
-            "topK": 5,
-            "maxChars": 800,
-            "scope": "all"
+            "enabled": true,
+            "topK": 5
+          },
+          "autoCapture": {
+            "enabled": true
           }
         }
       }
     }
   }
 }
-***REMOVED***
+```
 
-`mem0.mode` is the authoritative switch:
+*Tip: Enable `autoCapture` and `autoRecall` to allow the agent to automatically save important facts and recall them in future conversations without explicit tool calls!*
 
-- `local`: no API key required
-- `remote`: API key required
-- `disabled`: Mem0 requests are disabled
+### Recommended: Voyage AI (Best for RAG)
 
-`mem0.baseUrl` only controls the request target. It no longer determines whether the plugin treats Mem0 as local or remote.
+For production use cases requiring highly accurate semantic retrieval, we strongly recommend using [Voyage AI](https://www.voyageai.com/) for both embeddings and reranking.
 
-## Tools
+---
 
-### `memory_search`
+## 🛠️ Deep Dive: Tools & Capabilities (For Developers)
 
-Primary memory-slot search tool backed by LanceDB, with optional Mem0 fallback.
+The plugin equips agents with explicit memory manipulation tools:
 
-***REMOVED***
+### 🔍 `memory_search` & `memorySearch`
+The primary retrieval tools. They query the LanceDB Hot Plane using Hybrid Search (Vector + BM25 FTS) and fall back to Mem0 if results are scarce.
+
+```json
 {
-  "query": "diet preference",
+  "query": "user's dietary preferences",
   "userId": "user_123",
   "topK": 5,
   "filters": {
@@ -77,89 +149,52 @@ Primary memory-slot search tool backed by LanceDB, with optional Mem0 fallback.
     "categories": ["preference"]
   }
 }
-***REMOVED***
+```
 
-### `memory_get`
+### 💾 `memoryStore`
+Explicitly writes a memory. The write path guarantees safety:
+`Agent -> Audit Plane -> Local Outbox -> Mem0 Control Plane -> LanceDB Hot Plane`
 
-Reads a snippet from a workspace-relative memory source path.
-
-***REMOVED***
+```json
 {
-  "path": "MEMORY.md",
-  "from": 1,
-  "lines": 20
-}
-***REMOVED***
-
-### `memorySearch`
-
-Custom hybrid search API exposed by the plugin.
-
-***REMOVED***
-{
-  "query": "diet preference",
-  "userId": "user_123",
-  "topK": 5,
-  "filters": {
-    "scope": "long-term",
-    "categories": ["preference"]
-  }
-}
-***REMOVED***
-
-### `memoryStore`
-
-Stores a memory record and syncs it to LanceDB, optionally via Mem0.
-
-***REMOVED***
-{
-  "text": "The user likes science fiction movies.",
+  "text": "The user allergic to peanuts.",
   "userId": "user_123",
   "scope": "long-term",
-  "categories": ["preference", "entertainment"]
+  "categories": ["preference", "health"]
 }
-***REMOVED***
+```
 
-## Architecture
+### 📖 `memory_get`
+Reads raw JSONL snippets directly from the Audit Plane for debugging or deep chronological analysis.
 
-1. Write path: Agent -> `memoryStore` -> audit plane -> outbox / sync-engine -> Mem0 control plane + LanceDB hot plane
-2. Read path: Agent -> `memory_search` / `memorySearch` -> LanceDB hot plane (FTS + vector + hybrid RRF) first -> Mem0 fallback
-3. Retrieval source of truth for humans: audit records stored through the file-first plane
+---
 
-Current write status semantics:
+## 🤖 Automatic Lifecycle Hooks
 
-- `synced`: Mem0 event confirmed and LanceDB visible
-- `partial`: local write succeeded but Mem0 was unavailable or unconfirmed
-- `failed`: audit or LanceDB primary path failed
+If your OpenClaw host supports standard hooks (`before_prompt_build`, `agent_end`), the plugin operates autonomously:
 
-Auto recall:
+### 📥 Auto Capture (Continuous Learning)
+At the end of a turn (`agent_end`), if enabled, the plugin submits the `User + Assistant` conversation to Mem0. Mem0 intelligently extracts facts, preferences, and profile changes. These are then asynchronously synced into local LanceDB and the Audit log.
 
-- disabled by default
-- when enabled and the host exposes a compatible hook API, the plugin injects a formatted `<relevant_memories>` block before the turn
-- retrieval source is the current hot plane with Mem0 fallback
+### 📤 Auto Recall (Context Injection)
+Before the agent replies (`before_prompt_build`), the plugin searches the Hot Plane using the latest user query. Relevant memories are automatically injected into the agent's `<relevant_memories>` context block, providing immediate historical awareness.
 
-Auto capture:
+---
 
-- disabled by default
-- when enabled and the host exposes a compatible end-of-turn hook, the plugin submits the latest `user + assistant` turn to Mem0
-- capture uses a deterministic idempotency key per turn
-- after Mem0 confirms the capture event, extracted memories are synced back into the local audit plane and LanceDB hot plane
+## 🔧 Local Development & Testing
 
-## Local Mem0 Server Development
+Debugging remote memory services can be tedious. We bundle a Local Mem0 API server to make hacking easy.
 
-For local development and testing, you can spin up a local instance of the Mem0 API. This is highly recommended to easily debug the interaction between the plugin and the Mem0 control plane.
+1. **Prerequisites**: Install `uv` (`pip install uv` or via homebrew).
+2. **Setup**: Run `npm run mem0:setup` to spawn an isolated virtual environment and install dependencies (including `google-genai` for local Gemini embedding fallback).
+3. **Start**: Run `npm run mem0:start` (listens on `127.0.0.1:8000`).
 
-1.  **Prerequisites**: Ensure you have `uv` installed (`pip install uv` or via your system package manager).
-2.  **Setup Environment**: Run `npm run mem0:setup` to create a virtual environment and install the explicit local server dependencies, including `google-genai` for Gemini-backed local Mem0.
-3.  **Start Server**: Run `npm run mem0:start` to start the server on `http://127.0.0.1:8000`.
+The local server seamlessly reads your `~/.openclaw/openclaw.json` to reuse your existing LLM defaults (`agents.defaults.memorySearch`) for embeddings.
 
-The local server reads `~/.openclaw/openclaw.json` and reuses `agents.defaults.memorySearch` for provider, API key, model, and base URL. Environment variables can override this when debugging.
-
-## Development
-
-***REMOVED***bash
-npm install
-npm run dev
-npm run build
-npm test
-***REMOVED***
+### Developer Commands
+```bash
+npm install      # Install JS dependencies
+npm run dev      # Compile TS on the fly
+npm run build    # Build output bundle
+npm test         # Run unit test suite
+```
