@@ -175,6 +175,7 @@ export default function register(api: OpenClawApi) {
 
   debug.basic('plugin.register', {
     pluginVersion: PLUGIN_VERSION,
+    interfaceMode: 'hook-first-sidecar',
     mem0Mode: cfg.mem0Mode,
     mem0BaseUrl: cfg.mem0BaseUrl,
     autoRecallEnabled: cfg.autoRecall.enabled,
@@ -184,6 +185,7 @@ export default function register(api: OpenClawApi) {
     memoryConsolidationEnabled: cfg.memoryConsolidation?.enabled ?? true,
     debugMode: cfg.debug?.mode || 'off',
     debugLogDir: cfg.debug?.logDir,
+    adminTools: ['memory_search', 'memory_get', 'memorySearch', 'memoryStore'],
   });
 
   void maybeAutoStartLocalMem0(cfg, debug);
@@ -221,10 +223,10 @@ export default function register(api: OpenClawApi) {
     debug.basic('plugin.lifecycle_worker_started', {});
   }
 
-  // memory slot 主工具：完全走新机制（不再桥接 memory-core）
+  // Hooks are the normal runtime path. Retained tools are operator/admin utilities.
   api.registerTool({
     name: 'memory_search',
-    description: 'Search migrated memories from local LanceDB-side store with optional Mem0 fallback',
+    description: 'Operator/debug search for migrated memories from the local LanceDB-side store with optional Mem0 fallback',
     parameters: {
       type: 'object',
       properties: {
@@ -254,7 +256,7 @@ export default function register(api: OpenClawApi) {
 
   api.registerTool({
     name: 'memory_get',
-    description: 'Read snippet from a migrated memory source path',
+    description: 'Diagnostic reader for migrated memory snippets and audit-oriented inspection',
     parameters: {
       type: 'object',
       properties: {
@@ -270,11 +272,11 @@ export default function register(api: OpenClawApi) {
     },
   });
 
-  // 自定义增强检索（LanceDB + Mem0 fallback）
+  // Retained for operator verification and manual debugging of hybrid retrieval.
   api.registerTool(
     {
       name: 'memorySearch',
-      description: 'Search memories using hybrid retrieval (LanceDB + Mem0 fallback)',
+      description: 'Operator/debug hybrid memory search for manual verification (LanceDB + Mem0 fallback)',
       parameters: {
         type: 'object',
         properties: {
@@ -299,11 +301,11 @@ export default function register(api: OpenClawApi) {
     },
   );
 
-  // 自定义写入（统一走 TS bridge，同步到本地 LanceDB，按配置可先写 Mem0）
+  // Retained for manual repair, import, and admin-triggered writes.
   api.registerTool(
     {
       name: 'memoryStore',
-      description: 'Store a new memory with async sync to LanceDB via Mem0',
+      description: 'Manual admin write path for memory repair, import, and async sync to LanceDB via Mem0',
       parameters: {
         type: 'object',
         properties: {
@@ -519,7 +521,7 @@ export default function register(api: OpenClawApi) {
     }, { name: 'mem0-auto-capture' });
   }
 
-  api.logger?.info?.(`[openclaw-mem0-lancedb] registered v${PLUGIN_VERSION}`);
+  api.logger?.info?.(`[openclaw-mem0-lancedb] hook-first memory sidecar enabled v${PLUGIN_VERSION}`);
 }
 
 export async function maybeAutoStartLocalMem0(

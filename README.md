@@ -124,7 +124,7 @@ Add the plugin to your `openclaw.json` config file. Here is the minimal recommen
 }
 ```
 
-*Tip: Enable `autoCapture` and `autoRecall` to allow the agent to automatically save important facts and recall them in future conversations without explicit tool calls!*
+*Tip: Enable `autoCapture` and `autoRecall` to run the plugin in its normal hook-first mode. The agent can save and recall memories without explicit tool calls.*
 
 ### Recommended: Voyage AI (Best for RAG)
 
@@ -132,12 +132,37 @@ For production use cases requiring highly accurate semantic retrieval, we strong
 
 ---
 
-## 🛠️ Deep Dive: Tools & Capabilities (For Developers)
+## 🤖 Hook-First Runtime
 
-The plugin equips agents with explicit memory manipulation tools:
+This plugin is designed as a **hook-first memory sidecar** for OpenClaw. In normal operation, hooks are the primary interface and tools are optional operator utilities.
+
+If your OpenClaw host supports standard hooks (`before_prompt_build`, `agent_end`), the plugin operates autonomously:
+
+### 📥 Auto Capture (Primary Write Path)
+At the end of a turn (`agent_end`), if enabled, the plugin submits the `User + Assistant` conversation to Mem0. Mem0 extracts facts, preferences, and profile changes. The result is then synced into the local audit log and LanceDB hot plane.
+
+### 📤 Auto Recall (Primary Read Path)
+Before the agent replies (`before_prompt_build`), the plugin searches the hot plane using the latest user query. Relevant memories are injected into the prompt context automatically, so the model does not need to remember to call a search tool.
+
+### 🔁 Async Convergence: Poller And Workers
+Hooks own the dialogue-time path. Background components own eventual consistency:
+
+- `Mem0Poller` reconciles delayed Mem0 events and pulls confirmed captured memories back into local state.
+- `EmbeddingMigrationWorker` upgrades or fills vector data for legacy rows.
+- `MemoryConsolidationWorker` merges and cleans memory state to improve recall quality.
+- `MemoryLifecycleWorker` maintains lifecycle transitions and long-term search hygiene.
+
+This split is intentional:
+
+- hooks keep the user-facing path fast and deterministic
+- poller/worker processes repair and converge asynchronous state in the background
+
+---
+
+## 🛠️ Admin/Debug Tools (For Operators And Developers)
 
 ### 🔍 `memory_search` & `memorySearch`
-The primary retrieval tools. They query the LanceDB Hot Plane using Hybrid Search (Vector + BM25 FTS) and fall back to Mem0 if results are scarce.
+Manual operator/debug retrieval tools. They query the LanceDB Hot Plane using Hybrid Search (Vector + BM25 FTS) and can fall back to Mem0 if results are scarce.
 
 ```json
 {
@@ -152,8 +177,8 @@ The primary retrieval tools. They query the LanceDB Hot Plane using Hybrid Searc
 ```
 
 ### 💾 `memoryStore`
-Explicitly writes a memory. The write path guarantees safety:
-`Agent -> Audit Plane -> Local Outbox -> Mem0 Control Plane -> LanceDB Hot Plane`
+Manual admin write path for repair, import, and controlled testing. The write path still preserves the normal safety chain:
+`Operator -> Audit Plane -> Local Outbox -> Mem0 Control Plane -> LanceDB Hot Plane`
 
 ```json
 {
@@ -165,19 +190,7 @@ Explicitly writes a memory. The write path guarantees safety:
 ```
 
 ### 📖 `memory_get`
-Reads raw JSONL snippets directly from the Audit Plane for debugging or deep chronological analysis.
-
----
-
-## 🤖 Automatic Lifecycle Hooks
-
-If your OpenClaw host supports standard hooks (`before_prompt_build`, `agent_end`), the plugin operates autonomously:
-
-### 📥 Auto Capture (Continuous Learning)
-At the end of a turn (`agent_end`), if enabled, the plugin submits the `User + Assistant` conversation to Mem0. Mem0 intelligently extracts facts, preferences, and profile changes. These are then asynchronously synced into local LanceDB and the Audit log.
-
-### 📤 Auto Recall (Context Injection)
-Before the agent replies (`before_prompt_build`), the plugin searches the Hot Plane using the latest user query. Relevant memories are automatically injected into the agent's `<relevant_memories>` context block, providing immediate historical awareness.
+Reads raw JSONL snippets directly from the Audit Plane for diagnostics or deep chronological analysis.
 
 ---
 

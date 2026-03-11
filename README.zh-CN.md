@@ -126,7 +126,7 @@ bash scripts/install.sh
 }
 ```
 
-*提示：开启 `autoCapture` 和 `autoRecall` 后，Agent 将全自动运作，自动从对话中学习并记住关键信息，而无需显式调用记忆提取工具！*
+*提示：开启 `autoCapture` 和 `autoRecall` 后，插件会进入默认的 `hook-first` 模式。Agent 无需显式调用工具，也能自动沉淀与召回记忆。*
 
 ### 高阶推荐：Voyage AI (最佳检索体验)
 
@@ -134,12 +134,37 @@ bash scripts/install.sh
 
 ---
 
-## 🛠️ 深度探索：工具与能力 (适合研发人员)
+## 🤖 Hook-First 运行模型
 
-插件同时暴露了可以直接调用的高级工具，供复杂的 Agent 编排使用：
+这个插件的推荐形态是 **hook-first memory sidecar**。正常运行时，Hooks 是主接口，Tools 只作为运维、排障和手动修复入口。
+
+只要 OpenClaw 宿主支持标准钩子 (`before_prompt_build`, `agent_end`)，插件就会自动工作：
+
+### 📥 自动捕捉 Auto Capture（主写入路径）
+回合结束（`agent_end`）时，插件会把最近一轮 `User + Assistant` 对话提交给 Mem0。Mem0 负责抽取偏好、事实和画像变化，再把结果同步回本地 audit 与 LanceDB 热面。
+
+### 📤 自动召回 Auto Recall（主读取路径）
+在 Agent 回复前（`before_prompt_build`），插件会根据最新用户问题自动检索热面记忆，并把相关内容注入上下文。模型不需要自己记得去调用检索工具。
+
+### 🔁 异步收敛：Poller 与 Workers
+Hooks 负责对话时刻的主链路，后台组件负责最终一致性：
+
+- `Mem0Poller` 负责追踪延迟完成的 Mem0 事件，并把确认后的记忆同步回本地状态。
+- `EmbeddingMigrationWorker` 负责旧数据向量迁移与补齐。
+- `MemoryConsolidationWorker` 负责整理、合并和净化记忆，提升召回质量。
+- `MemoryLifecycleWorker` 负责生命周期状态维护，保证长期检索卫生。
+
+这样拆分是有意为之：
+
+- hooks 保证前台对话路径足够快、足够稳定
+- poller/worker 在后台完成异步收敛与修复
+
+---
+
+## 🛠️ Admin/Debug Tools（运维与研发）
 
 ### 🔍 `memory_search` & `memorySearch`
-核心的高频检索工具。优先命中 LanceDB 热面的混合检索（向量 + BM25 全文检索），在数据稀疏时智能回退到 Mem0。
+用于人工排障和运维验证的检索工具。优先命中 LanceDB 热面的混合检索（向量 + BM25 全文检索），在数据稀疏时可回退到 Mem0。
 
 ```json
 {
@@ -154,8 +179,8 @@ bash scripts/install.sh
 ```
 
 ### 💾 `memoryStore`
-显式落盘一条记忆。写入链路具有事务级安全性保证：
-`Agent -> Audit 面落地 -> 本地 Outbox -> 同步 Mem0 控制面 -> 写入 LanceDB 热面更新索引`
+用于手工修复、导入或受控测试的管理写入入口。写入链路仍保持同样的安全收敛路径：
+`Operator -> Audit 面落地 -> 本地 Outbox -> 同步 Mem0 控制面 -> 写入 LanceDB 热面更新索引`
 
 ```json
 {
@@ -167,19 +192,7 @@ bash scripts/install.sh
 ```
 
 ### 📖 `memory_get`
-直接从文件审计系统中读取原始 JSONL 日志切片，用于底层状态排障或构建时间线回溯分析分析。
-
----
-
-## 🤖 全自动生命周期管理 (Hooks)
-
-只要 OpenClaw 宿主环境支持标准钩子 (`before_prompt_build`, `agent_end`)，该插件就能做到黑盒自动运行：
-
-### 📥 自动捕捉 Auto Capture (无感持续学习)
-回合结束（`agent_end`）时触发。插件会将最近一轮的 `User + Assistant` 对话提交至 Mem0。Mem0 会在后台进行智能特征提取（识别偏好更新、事实新增或修正），然后异步将提炼后的原子记忆同步回本地 LanceDB，完成长期学习过程。
-
-### 📤 自动召回 Auto Recall (零微调上下文注入)
-在 Agent 还没思考前（`before_prompt_build`），插件自动截获最新用户的 Query 查询，对内请求 LanceDB 混合检索，将匹配到的记忆段落在 Prompt 最前方注入格式化的 `<relevant_memories>` 上下文块。让大模型具备即时的历史感知。
+直接从文件审计系统中读取原始 JSONL 日志切片，用于底层状态排障或时间线回溯分析。
 
 ---
 

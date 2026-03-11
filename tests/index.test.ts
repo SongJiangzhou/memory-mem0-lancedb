@@ -8,6 +8,12 @@ import { FileAuditStore } from '../src/audit/store';
 import { MemoryStoreTool } from '../src/tools/store';
 import register, { maybeAutoStartLocalMem0, resolveConfig } from '../src/index';
 
+const LOCAL_DATE_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 function pendingCapturePath(sessionKey: string): string {
   const safe = sessionKey.replace(/[^a-z0-9]/gi, '_').slice(0, 64);
   return join(tmpdir(), `mem0-cap-${safe}.json`);
@@ -204,8 +210,8 @@ test('resolveConfig does not read deprecated top-level mem0 auth fields', async 
     mem0ApiKey: 'deprecated-key',
   } as any);
 
-  assert.equal(config.mem0Mode, 'remote');
-  assert.equal(config.mem0BaseUrl, 'https://api.mem0.ai');
+  assert.equal(config.mem0Mode, 'local');
+  assert.equal(config.mem0BaseUrl, 'http://127.0.0.1:8000');
   assert.equal(config.mem0ApiKey, '');
 });
 
@@ -248,6 +254,31 @@ test('register installs auto-recall hook when enabled and hook api exists', asyn
   assert.ok(hooks.some((hook) => hook.name === 'before_prompt_build'));
 });
 
+test('register exposes lifecycle hooks as the primary memory interface', async () => {
+  const hooks: Array<{ event: string; name: string }> = [];
+  const tools: Array<{ name: string; description: string }> = [];
+
+  register({
+    pluginConfig: {
+      autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
+      autoCapture: { enabled: true, scope: 'long-term', requireAssistantReply: true, maxCharsPerMessage: 2000 },
+    },
+    registerTool(tool: any) {
+      tools.push({ name: String(tool.name || ''), description: String(tool.description || '') });
+    },
+    registerHook(event: string, _handler: Function, opts?: any) {
+      hooks.push({ event, name: String(opts?.name || '') });
+    },
+  } as any);
+
+  assert.ok(hooks.some((hook) => hook.event === 'before_prompt_build' && hook.name === 'mem0-auto-recall'));
+  assert.ok(hooks.some((hook) => hook.event === 'agent_end' && hook.name === 'mem0-auto-capture'));
+  assert.match(tools.find((tool) => tool.name === 'memory_search')?.description || '', /operator|debug|admin/i);
+  assert.match(tools.find((tool) => tool.name === 'memorySearch')?.description || '', /operator|debug|admin/i);
+  assert.match(tools.find((tool) => tool.name === 'memoryStore')?.description || '', /manual|operator|admin/i);
+  assert.match(tools.find((tool) => tool.name === 'memory_get')?.description || '', /diagnostic|debug|admin/i);
+});
+
 test('register does not throw when auto-recall is enabled but no hook api exists', async () => {
   assert.doesNotThrow(() => {
     register({
@@ -272,6 +303,7 @@ test('register logs plugin version to host logger', async () => {
   } as any);
 
   assert.ok(messages.some((msg) => msg.includes('v0.1.0')));
+  assert.ok(messages.some((msg) => /hook-first memory sidecar/i.test(msg)));
 });
 
 test('register includes plugin version in structured debug log file', async () => {
@@ -285,7 +317,7 @@ test('register includes plugin version in structured debug log file', async () =
       registerTool() {},
     } as any);
 
-    const date = new Date().toISOString().slice(0, 10);
+    const date = LOCAL_DATE_FORMATTER.format(new Date());
     const content = readFileSync(join(dir, `${date}.log`), 'utf-8');
     assert.match(content, /plugin\.register/);
     assert.match(content, /"pluginVersion":"0\.1\.0"/);
@@ -847,6 +879,97 @@ test('before_prompt_build clears pending capture notifications after injecting t
     global.fetch = originalFetch;
     rmSync(dir, { recursive: true, force: true });
     rmSync(pendingCapturePath(sessionKey), { force: true });
+  }
+});
+
+test('hook-first flow captures on one turn and recalls on the next without tool calls', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'index-hook-first-flow-'));
+  const hooks: Array<{ name: string; handler: Function }> = [];
+  const originalFetch = global.fetch;
+  let toolExecutionCount = 0;
+
+  try {
+    global.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.endsWith('/v1/memories/')) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'mem0-captured-hook-flow',
+              data: { memory: 'User prefers hook-driven memory over manual tool calls' },
+              event: 'ADD',
+            },
+          ]),
+        };
+      }
+      throw new Error(`unexpected fetch url: ${url}`);
+    }) as typeof fetch;
+
+    register({
+      pluginConfig: {
+        lancedbPath: join(dir, 'lancedb'),
+        auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+        outboxDbPath: join(dir, 'outbox.json'),
+        mem0: {
+          mode: 'remote',
+          baseUrl: 'https://api.mem0.ai',
+          apiKey: 'test-key',
+        },
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+        autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
+        autoCapture: {
+          enabled: true,
+          scope: 'long-term',
+          requireAssistantReply: true,
+          maxCharsPerMessage: 2000,
+        },
+      },
+      registerTool(tool: any) {
+        const originalExecute = tool.execute;
+        tool.execute = async (...args: any[]) => {
+          toolExecutionCount += 1;
+          return originalExecute(...args);
+        };
+      },
+      registerHook(name: string, handler: Function) {
+        hooks.push({ name, handler });
+      },
+    } as any);
+
+    const captureHook = hooks.find((entry) => entry.name === 'agent_end');
+    const recallHook = hooks.find((entry) => entry.name === 'before_prompt_build');
+    assert.ok(captureHook);
+    assert.ok(recallHook);
+
+    const captureResult = await captureHook?.handler(
+      {
+        messages: [
+          { role: 'user', content: 'Please remember that I prefer hook-driven memory.' },
+          { role: 'assistant', content: 'Noted. You prefer hook-driven memory.' },
+        ],
+        success: true,
+      },
+      { agentId: 'main', sessionKey: 'hook-first-session' },
+    );
+
+    assert.equal(captureResult?.synced?.synced, 1);
+
+    const recallResult = await recallHook?.handler(
+      {
+        prompt: 'How should the memory system work?',
+        messages: [{ role: 'user', content: 'How should the memory system work?' }],
+      },
+      { agentId: 'main', sessionKey: 'hook-first-session' },
+    );
+
+    assert.equal(toolExecutionCount, 0);
+    assert.match(String((recallResult as any)?.prependSystemContext || ''), /User prefers hook-driven memory over manual tool calls/);
+    assert.match(String((recallResult as any)?.prependSystemContext || ''), /<recall source="lancedb">/);
+  } finally {
+    global.fetch = originalFetch;
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(pendingCapturePath('hook-first-session'), { force: true });
   }
 });
 
