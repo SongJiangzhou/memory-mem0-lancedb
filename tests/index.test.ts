@@ -415,6 +415,44 @@ test('before_prompt_build surfaces final recall block to the user in verbose deb
   }
 });
 
+test('before_prompt_build surfaces an explicit empty debug-recall block in verbose mode when no memories are found', async () => {
+  const hooks: Array<{ name: string; handler: Function }> = [];
+  const dir = mkdtempSync(join(tmpdir(), 'index-auto-recall-empty-visible-'));
+
+  try {
+    register({
+      pluginConfig: {
+        lancedbPath: join(dir, 'lancedb'),
+        outboxDbPath: join(dir, 'outbox.json'),
+        auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+        embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+        autoRecall: { enabled: true, topK: 3, maxChars: 300, scope: 'all' },
+        debug: { mode: 'verbose' as const },
+      },
+      registerTool() {},
+      on(name: string, handler: Function) {
+        hooks.push({ name, handler });
+      },
+    } as any);
+
+    const hook = hooks.find((entry) => entry.name === 'before_prompt_build');
+    assert.ok(hook);
+
+    const result = await hook?.handler(
+      {
+        prompt: 'What do I prefer to drink?',
+        messages: [{ role: 'user', content: 'What do I prefer to drink?' }],
+      },
+      { agentId: 'main', sessionKey: 'test-session' },
+    );
+
+    assert.doesNotMatch(String((result as any)?.prependSystemContext || ''), /<recall source=/);
+    assert.match(String((result as any)?.prependContext || ''), /<debug-recall source="none"><\/debug-recall>/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('register installs auto-capture hook when enabled and hook api exists', async () => {
   const hooks: Array<{ name: string; handler: Function }> = [];
 

@@ -635,7 +635,7 @@ function buildPendingCaptureBlock(notification: Record<string, any> | null): str
 function buildVisibleRecallDebugBlock(recallBlock: string): string {
   const block = String(recallBlock || '').trim();
   if (!block) {
-    return '';
+    return '<debug-recall source="none"></debug-recall>';
   }
 
   return block
