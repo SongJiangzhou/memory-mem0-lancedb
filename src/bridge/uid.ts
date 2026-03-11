@@ -10,10 +10,12 @@ export function buildMemoryUid(
   text: string,
   tsBucket: string,
   category = 'general',
+  namespace = '',
 ): string {
   const raw = [
     userId.trim(),
     scope.trim(),
+    namespace.trim(),
     normalizeText(text),
     tsBucket.trim(),
     category.trim(),

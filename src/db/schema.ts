@@ -5,6 +5,8 @@ export function getMemoryTableName(dim: number): string {
 export interface MemoryRow {
   memory_uid: string;
   user_id: string;
+  session_id: string;
+  agent_id: string;
   run_id: string;
   scope: string;
   text: string;

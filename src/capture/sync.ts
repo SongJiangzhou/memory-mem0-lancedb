@@ -13,6 +13,8 @@ const CAPTURE_UID_BUCKET = '1970-01-01T00';
 export async function syncCapturedMemories(params: {
   memories: Mem0ExtractedMemory[];
   userId: string;
+  sessionId?: string;
+  agentId?: string;
   runId?: string | null;
   scope: 'long-term' | 'session';
   eventId: string | null;
@@ -51,6 +53,7 @@ export async function syncCapturedMemories(params: {
       memoryPayload.text,
       CAPTURE_UID_BUCKET,
       category,
+      memoryPayload.scope === 'session' ? String(memoryPayload.session_id || '') : '',
     );
     memoryUids.push(memoryUid);
     const dedupKeys = buildMemoryDedupKeys({ text: memoryPayload.text, mem0: memoryPayload.mem0 });
@@ -173,6 +176,8 @@ function toMemoryPayload(
   memory: Mem0ExtractedMemory,
   params: {
     userId: string;
+    sessionId?: string;
+    agentId?: string;
     runId?: string | null;
     scope: 'long-term' | 'session';
     eventId: string | null;
@@ -187,6 +192,8 @@ function toMemoryPayload(
 
   return backfillLifecycleFields({
     user_id: params.userId,
+    session_id: params.sessionId || '',
+    agent_id: params.agentId || '',
     run_id: params.runId || null,
     scope: params.scope,
     text: memory.text,
@@ -216,6 +223,8 @@ function toRecord(memoryUid: string, memory: MemorySyncPayload, adapter: MemoryA
   return {
     memory_uid: memoryUid,
     user_id: enriched.user_id,
+    session_id: enriched.session_id || '',
+    agent_id: enriched.agent_id || '',
     run_id: enriched.run_id || null,
     scope: enriched.scope,
     text: enriched.text,

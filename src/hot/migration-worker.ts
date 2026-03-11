@@ -504,6 +504,8 @@ export class EmbeddingMigrationWorker {
     return {
       memory_uid: enriched.memory_uid,
       user_id: enriched.user_id,
+      session_id: enriched.session_id || '',
+      agent_id: enriched.agent_id || '',
       run_id: enriched.run_id || '',
       scope: enriched.scope,
       text: enriched.text,

@@ -13,3 +13,10 @@ test('buildMemoryUid is stable for equivalent normalized text', () => {
 
   assert.equal(first, second);
 });
+
+test('buildMemoryUid keeps session memories isolated by namespace', () => {
+  const first = buildMemoryUid('default', 'session', 'Hello world', '2026-03-07T10', 'general', 'session-a');
+  const second = buildMemoryUid('default', 'session', 'Hello world', '2026-03-07T10', 'general', 'session-b');
+
+  assert.notEqual(first, second);
+});

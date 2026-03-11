@@ -4,6 +4,8 @@
 export interface MemoryRecord {
   memory_uid: string;
   user_id: string;
+  session_id?: string;
+  agent_id?: string;
   run_id?: string | null;
   scope: 'long-term' | 'session';
   text: string;
@@ -130,7 +132,9 @@ export interface AutoCaptureConfig {
  */
 export interface SearchParams {
   query: string;
-  userId: string;
+  userId?: string;
+  sessionId?: string;
+  agentId?: string;
   topK?: number;
   filters?: {
     scope?: string;
@@ -146,7 +150,9 @@ export interface SearchParams {
  */
 export interface StoreParams {
   text: string;
-  userId: string;
+  userId?: string;
+  sessionId?: string;
+  agentId?: string;
   scope?: 'long-term' | 'session';
   metadata?: Record<string, any>;
   categories?: string[];
@@ -186,6 +192,8 @@ export interface OutboxItem {
 
 export interface MemorySyncPayload {
   user_id: string;
+  session_id?: string;
+  agent_id?: string;
   run_id?: string | null;
   scope: 'long-term' | 'session';
   text: string;

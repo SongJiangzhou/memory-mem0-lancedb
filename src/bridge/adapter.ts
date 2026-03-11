@@ -91,14 +91,18 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
     const table = await this.getTable();
     const userId = escapeSqlString(memory.user_id);
     const scope = escapeSqlString(memory.scope);
+    const sessionId = escapeSqlString(String(memory.session_id || ''));
     const mem0Hash = String(memory.mem0?.hash || '').trim();
     const text = String(memory.text || '').trim();
+    const scopeClause = scope === 'session'
+      ? `user_id = '${userId}' AND status = 'active' AND scope = '${scope}' AND session_id = '${sessionId}'`
+      : `user_id = '${userId}' AND status = 'active' AND scope = '${scope}'`;
 
     let rows: any[] = [];
     if (mem0Hash) {
       const escapedHash = escapeSqlString(mem0Hash);
       rows = await table.query()
-        .where(`user_id = '${userId}' AND status = 'active' AND scope = '${scope}' AND mem0_hash = '${escapedHash}'`)
+        .where(`${scopeClause} AND mem0_hash = '${escapedHash}'`)
         .limit(5)
         .toArray();
     }
@@ -106,7 +110,7 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
     if (rows.length === 0 && text) {
       const escapedText = escapeSqlString(text);
       rows = await table.query()
-        .where(`user_id = '${userId}' AND status = 'active' AND scope = '${scope}' AND text = '${escapedText}'`)
+        .where(`${scopeClause} AND text = '${escapedText}'`)
         .limit(20)
         .toArray();
     }
@@ -140,6 +144,8 @@ async function toLanceRow(record: MemoryAdapterRecord, config?: EmbeddingConfig)
   return {
     memory_uid: record.memory_uid,
     user_id: memory.user_id,
+    session_id: memory.session_id || '',
+    agent_id: memory.agent_id || '',
     run_id: memory.run_id || '',
     scope: memory.scope,
     text: memory.text,

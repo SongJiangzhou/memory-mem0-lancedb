@@ -150,6 +150,8 @@ function toPayload(record: MemoryRecord): MemorySyncPayload {
   const enriched = backfillLifecycleFields(record);
   return {
     user_id: enriched.user_id,
+    session_id: enriched.session_id || '',
+    agent_id: enriched.agent_id || '',
     run_id: enriched.run_id || null,
     scope: enriched.scope,
     text: enriched.text,

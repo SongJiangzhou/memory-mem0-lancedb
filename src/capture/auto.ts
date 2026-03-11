@@ -5,6 +5,8 @@ import { sanitizeMemoryText } from './security';
 
 export type AutoCapturePayload = {
   userId: string;
+  sessionId?: string;
+  agentId?: string;
   runId?: string | null;
   scope: 'long-term' | 'session';
   idempotencyKey: string;
@@ -13,6 +15,8 @@ export type AutoCapturePayload = {
 
 export function buildAutoCapturePayload(params: {
   userId: string;
+  sessionId?: string;
+  agentId?: string;
   runId?: string | null;
   latestUserMessage: string;
   latestAssistantMessage?: string;
@@ -47,11 +51,13 @@ export function buildAutoCapturePayload(params: {
 
   const idempotencyKey = crypto
     .createHash('sha256')
-    .update([params.userId, params.runId || '', userCandidate, messages[1]?.content || ''].join('|'), 'utf-8')
+    .update([params.userId, params.sessionId || '', params.runId || '', userCandidate, messages[1]?.content || ''].join('|'), 'utf-8')
     .digest('hex');
 
   return {
     userId: params.userId,
+    sessionId: params.sessionId || '',
+    agentId: params.agentId || '',
     runId: params.runId || null,
     scope: params.config.scope,
     idempotencyKey,

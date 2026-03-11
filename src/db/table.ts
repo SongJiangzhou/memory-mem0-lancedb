@@ -39,6 +39,8 @@ export async function openMemoryTable(dbPath: string, dim: number = 16) {
   const tbl = await db.createTable(tableName, [{
     memory_uid: '__init__',
     user_id: '',
+    session_id: '',
+    agent_id: '',
     run_id: '',
     scope: 'long-term',
     text: '',
@@ -76,6 +78,7 @@ export async function openMemoryTable(dbPath: string, dim: number = 16) {
 
   try {
     await tbl.createIndex('user_id'); // Scalar index
+    await tbl.createIndex('session_id'); // Scalar index
     await tbl.createIndex('status'); // Scalar index
     await tbl.createIndex('scope'); // Scalar index
     await tbl.createIndex('mem0_hash'); // Scalar index

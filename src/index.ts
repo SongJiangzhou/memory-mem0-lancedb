@@ -20,6 +20,7 @@ import { MemoryLifecycleWorker } from './hot/lifecycle-worker';
 import { reinforceRecalledMemories } from './hot/reinforcement';
 import { PluginDebugLogger, summarizeText } from './debug/logger';
 import { isLocalMem0BaseUrl } from './control/auth';
+import { getScopedMemoryIdentity, resolveSharedUserId } from './memory/user-space';
 import type { PluginConfig } from './types';
 
 function textResult(summary: string, details: any) {
@@ -229,7 +230,7 @@ export default function register(api: OpenClawApi) {
       required: ['query'],
     },
     async execute(_id: string, params: any) {
-      const result = await customSearch.execute({ userId: 'default', ...params });
+      const result = await customSearch.execute({ ...params, userId: resolveSharedUserId(params?.userId) });
       const summary = result.memories
         .map((m: any, i: number) => `[${i + 1}] (${m.scope || 'long-term'}) ${m.text}`)
         .join('\n');
@@ -276,7 +277,7 @@ export default function register(api: OpenClawApi) {
             },
           },
         },
-        required: ['query', 'userId'],
+        required: ['query'],
       },
       async execute(_id: string, params: any) {
         const result = await customSearch.execute(params);
@@ -299,7 +300,7 @@ export default function register(api: OpenClawApi) {
           metadata: { type: 'object', description: 'Additional metadata' },
           categories: { type: 'array', items: { type: 'string' }, description: 'Memory categories' },
         },
-        required: ['text', 'userId'],
+        required: ['text'],
       },
       async execute(_id: string, params: any) {
         const result = await customStore.execute(params);
@@ -322,9 +323,18 @@ export default function register(api: OpenClawApi) {
         return null;
       }
 
+      const recallIdentity = getScopedMemoryIdentity({
+        scope: 'session',
+        userId: resolveSharedUserId(),
+        sessionId: ctx?.sessionKey || ctx?.sessionId,
+        agentId: ctx?.agentId,
+      });
+
       const recall = await runAutoRecall({
         query: String(latestUserMessage),
-        userId: 'default',
+        userId: recallIdentity.userId,
+        sessionId: recallIdentity.sessionId,
+        agentId: recallIdentity.agentId,
         config: cfg.autoRecall,
         debug,
         reranker: createRecallReranker(cfg.autoRecall.reranker),
@@ -379,7 +389,9 @@ export default function register(api: OpenClawApi) {
         success: event?.success,
       });
       const payload = buildAutoCapturePayload({
-        userId: 'default',
+        userId: resolveSharedUserId(),
+        sessionId: ctx?.sessionKey || ctx?.sessionId || '',
+        agentId: ctx?.agentId || '',
         runId: null,
         latestUserMessage,
         latestAssistantMessage,
@@ -405,6 +417,8 @@ export default function register(api: OpenClawApi) {
           const synced = await syncCapturedMemories({
             memories: submitted.extractedMemories,
             userId: payload.userId,
+            sessionId: payload.scope === 'session' ? payload.sessionId : '',
+            agentId: payload.scope === 'session' ? payload.agentId : '',
             runId: payload.runId,
             scope: payload.scope,
             eventId: null,
@@ -443,6 +457,8 @@ export default function register(api: OpenClawApi) {
             const synced = await syncCapturedMemories({
               memories: extractedMemories,
               userId: payload.userId,
+              sessionId: payload.scope === 'session' ? payload.sessionId : '',
+              agentId: payload.scope === 'session' ? payload.agentId : '',
               runId: payload.runId,
               scope: payload.scope,
               eventId: submitted.event_id,

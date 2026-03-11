@@ -35,6 +35,7 @@ export class MemorySyncEngine {
       memory.text,
       this.tsBucket(memory.ts_event),
       category,
+      memory.scope === 'session' ? String(memory.session_id || '') : '',
     );
     const enrichedMemory = backfillLifecycleFields(memory);
     const record = this.toRecord(memoryUid, enrichedMemory);
@@ -99,6 +100,8 @@ export class MemorySyncEngine {
     return {
       memory_uid: memoryUid,
       user_id: memory.user_id,
+      session_id: memory.session_id || '',
+      agent_id: memory.agent_id || '',
       run_id: memory.run_id || null,
       scope: memory.scope,
       text: memory.text,

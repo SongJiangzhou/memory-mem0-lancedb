@@ -148,6 +148,8 @@ function supersedeRecord(record: MemoryRecord): MemoryRecord {
 function toPayload(record: MemoryRecord): MemorySyncPayload {
   return backfillLifecycleFields({
     user_id: record.user_id,
+    session_id: record.session_id || '',
+    agent_id: record.agent_id || '',
     run_id: record.run_id || null,
     scope: record.scope,
     text: record.text,

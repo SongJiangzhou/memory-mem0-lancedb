@@ -2,6 +2,7 @@ import { HotMemorySearch } from '../hot/search';
 import { hasMem0Auth } from '../control/auth';
 import { HttpMem0Client } from '../control/mem0';
 import { buildMemoryDedupKeys } from '../memory/dedup';
+import { getScopedMemoryIdentity } from '../memory/user-space';
 import { classifyQueryDomain, classifyQueryIntent } from '../memory/typing';
 import type { MemoryDomain, PluginConfig, SearchParams, SearchResult } from '../types';
 
@@ -15,16 +16,29 @@ export class MemorySearchTool {
   }
 
   async execute(params: SearchParams): Promise<SearchResult> {
-    const { query, userId, topK = 5, filters } = params;
+    const { query, topK = 5, filters } = params;
+    const identity = getScopedMemoryIdentity({
+      scope: filters?.scope === 'session' ? 'session' : 'long-term',
+      userId: params.userId,
+      sessionId: params.sessionId,
+      agentId: params.agentId,
+    });
     const intent = classifyQueryIntent(query);
 
     try {
-      const result = await this.hotSearch.search({ query, userId, topK, filters });
+      const result = await this.hotSearch.search({
+        query,
+        userId: identity.userId,
+        sessionId: identity.sessionId,
+        agentId: identity.agentId,
+        topK,
+        filters,
+      });
       if (result.memories.length >= topK || !hasMem0Auth(this.config)) {
         return result;
       }
 
-      const remote = await this.searchMem0Enhanced(query, userId, topK, filters, intent);
+      const remote = await this.searchMem0Enhanced(query, identity.userId, topK, filters, intent);
       return this.mergeLocalAndRemote(result, remote, topK);
     } catch (err) {
       console.warn('[memorySearch] LanceDB failed, trying Mem0 fallback:', err);
@@ -35,7 +49,7 @@ export class MemorySearchTool {
     }
 
     try {
-      return await this.searchMem0Enhanced(query, userId, topK, filters, intent);
+      return await this.searchMem0Enhanced(query, identity.userId, topK, filters, intent);
     } catch (err) {
       console.error('[memorySearch] Mem0 also failed:', err);
       return { memories: [], source: 'none' };

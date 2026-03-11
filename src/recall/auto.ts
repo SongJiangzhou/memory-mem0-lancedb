@@ -62,10 +62,12 @@ function truncateRecallLine(line: string, budget: number): string {
 export async function runAutoRecall(params: {
   query: string;
   userId: string;
+  sessionId?: string;
+  agentId?: string;
   config: AutoRecallConfig;
   debug?: PluginDebugLogger;
   reranker?: RecallReranker;
-  search: (input: { query: string; userId: string; topK: number; filters?: { scope?: string } }) => Promise<SearchResult>;
+  search: (input: { query: string; userId: string; sessionId?: string; agentId?: string; topK: number; filters?: { scope?: string } }) => Promise<SearchResult>;
 }): Promise<{ block: string; source: string; memories: SearchResult['memories'] }> {
   if (!params.config.enabled) {
     params.debug?.basic('auto_recall.skipped', { reason: 'disabled' });
@@ -90,6 +92,8 @@ export async function runAutoRecall(params: {
       params.search({
         query: variant.text,
         userId: params.userId,
+        sessionId: params.sessionId,
+        agentId: params.agentId,
         topK: candidateTopK,
         filters: params.config.scope === 'long-term' ? { scope: 'long-term' } : undefined,
       }),

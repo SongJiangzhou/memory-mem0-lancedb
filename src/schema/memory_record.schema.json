@@ -7,6 +7,8 @@
   "properties": {
     "memory_uid": { "type": "string" },
     "user_id": { "type": "string" },
+    "session_id": { "type": "string" },
+    "agent_id": { "type": "string" },
     "run_id": { "type": ["string", "null"] },
     "scope": { "type": "string", "enum": ["long-term", "session"] },
     "text": { "type": "string" },

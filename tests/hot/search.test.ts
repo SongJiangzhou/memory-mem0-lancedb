@@ -28,27 +28,27 @@ test('hot plane search returns canonical memory rows with filters', { concurrenc
 
     await store.execute({
       text: 'User preference: reply in English',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['preference'],
     });
     await store.execute({
       text: 'User wants all answers explained in English',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['preference'],
     });
 
     const result = await hot.search({
       query: 'English',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
 
     assert.equal(result.source, 'lancedb');
     assert.ok(result.memories.length >= 2);
-    assert.equal(result.memories[0]?.user_id, 'user-1');
+    assert.equal(result.memories[0]?.user_id, 'default');
     assert.equal(result.memories[0]?.scope, 'long-term');
     assert.match(result.memories.map((row) => row.text).join('\n'), /reply in English/);
     assert.match(result.memories.map((row) => row.text).join('\n'), /explained in English/);
@@ -76,20 +76,20 @@ test('hot plane hybrid search includes vector-only candidates through explicit f
 
     await store.execute({
       text: 'apple apple apple',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['keyword'],
     });
     await store.execute({
       text: 'banana banana banana',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['vector'],
     });
 
     const result = await hot.search({
       query: 'apple',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
@@ -119,26 +119,26 @@ test('hot plane exact token query ranks exact substring hit first', { concurrenc
 
     await store.execute({
       text: 'Session note: previous mem0 local test used token mem0-local-e2e-20260308-1156-ZP4M',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['token'],
     });
     await store.execute({
       text: 'Session summary: mem0 local test completed successfully with various follow-up checks',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['summary'],
     });
     await store.execute({
       text: 'Context: discussed local mem0 integration and semantic retrieval tuning',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['context'],
     });
 
     const result = await hot.search({
       query: 'mem0-local-e2e-20260308-1156-ZP4M',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
@@ -168,7 +168,7 @@ test('hot plane search deduplicates rows with identical text but different memor
     await tbl.add([
       {
         memory_uid: 'dup-1',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'User prefers Coke over Pepsi',
@@ -191,7 +191,7 @@ test('hot plane search deduplicates rows with identical text but different memor
       },
       {
         memory_uid: 'dup-2',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'User prefers Coke over Pepsi',
@@ -217,7 +217,7 @@ test('hot plane search deduplicates rows with identical text but different memor
 
     const result = await hot.search({
       query: 'Which soda do I prefer?',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
@@ -254,7 +254,7 @@ test('hot plane search logs embedding failures and falls back to ranked rows', {
     try {
       await tbl.add([{
         memory_uid: 'fallback-1',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'User prefers grilled chicken burgers at McDonalds',
@@ -278,7 +278,7 @@ test('hot plane search logs embedding failures and falls back to ranked rows', {
 
       const result = await hot.search({
         query: 'McDonalds',
-        userId: 'user-1',
+        userId: 'default',
         topK: 5,
         filters: { scope: 'long-term' },
       });
@@ -322,14 +322,14 @@ test('hot plane search reuses a single query embedding for vector search and MMR
     try {
       await store.execute({
         text: 'User prefers grilled chicken burgers at McDonalds',
-        userId: 'user-1',
+        userId: 'default',
         scope: 'long-term',
         categories: ['preference'],
       });
 
       const result = await hot.search({
         query: 'McDonalds grilled chicken burger',
-        userId: 'user-1',
+        userId: 'default',
         topK: 5,
         filters: { scope: 'long-term' },
       });
@@ -363,26 +363,26 @@ test('hot plane password-style question prefers the memory containing the exact 
 
     await store.execute({
       text: 'The test passcode set during the local mem0 E2E run at 11:56 was mem0-local-e2e-20260308-1156-ZP4M.',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['token'],
     });
     await store.execute({
       text: 'At 11:56, the local mem0 E2E run verified auto-capture and auto-recall, but did not record the final passcode.',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['summary'],
     });
     await store.execute({
       text: 'Local mem0 E2E retrospective: the main issue was ranking and fusion strategy, not the write path.',
-      userId: 'user-1',
+      userId: 'default',
       scope: 'long-term',
       categories: ['analysis'],
     });
 
     const result = await hot.search({
       query: 'What passcode was set during the local mem0 E2E run at 11:56?',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
@@ -539,7 +539,7 @@ test('hot plane lifecycle filtering excludes quarantined and expired memories', 
     await tbl.add([
       {
         memory_uid: 'active-1',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'User likes grilled chicken burgers.',
@@ -573,7 +573,7 @@ test('hot plane lifecycle filtering excludes quarantined and expired memories', 
       },
       {
         memory_uid: 'quarantined-1',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'What foods do I like at McDonalds?',
@@ -607,7 +607,7 @@ test('hot plane lifecycle filtering excludes quarantined and expired memories', 
       },
       {
         memory_uid: 'expired-1',
-        user_id: 'user-1',
+        user_id: 'default',
         run_id: '',
         scope: 'long-term',
         text: 'User used to like fried chicken.',
@@ -644,7 +644,7 @@ test('hot plane lifecycle filtering excludes quarantined and expired memories', 
 
     const result = await hot.search({
       query: 'grilled chicken',
-      userId: 'user-1',
+      userId: 'default',
       topK: 5,
       filters: { scope: 'long-term' },
     });
@@ -698,4 +698,69 @@ test('hot plane ranking prefers higher-confidence explicit memories over inferre
   );
 
   assert.equal(ranked[0]?.memory_uid, 'user-explicit');
+});
+
+test('hot plane keeps session memories isolated while long-term memories stay shared', { concurrency: false }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hot-search-session-'));
+
+  try {
+    const cfg = {
+      lancedbPath: dir,
+      mem0BaseUrl: '',
+      mem0ApiKey: '',
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+      autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+    };
+    const store = new MemoryStoreTool(cfg);
+    const hot = new HotMemorySearch(cfg);
+
+    await store.execute({
+      text: 'User prefers sparkling water over soda.',
+      scope: 'long-term',
+      categories: ['preference'],
+    });
+    await store.execute({
+      text: 'Session A task: finalize deployment checklist.',
+      scope: 'session',
+      sessionId: 'session-a',
+      categories: ['task'],
+    });
+    await store.execute({
+      text: 'Session B task: review quarterly budget.',
+      scope: 'session',
+      sessionId: 'session-b',
+      categories: ['task'],
+    });
+
+    const sessionA = await hot.search({
+      query: 'task',
+      userId: 'default',
+      sessionId: 'session-a',
+      topK: 10,
+    });
+    assert.equal(sessionA.memories.some((memory) => /Session A task/.test(memory.text)), true);
+    assert.equal(sessionA.memories.some((memory) => /Session B task/.test(memory.text)), false);
+
+    const sessionB = await hot.search({
+      query: 'task',
+      userId: 'default',
+      sessionId: 'session-b',
+      topK: 10,
+    });
+    assert.equal(sessionB.memories.some((memory) => /Session B task/.test(memory.text)), true);
+    assert.equal(sessionB.memories.some((memory) => /Session A task/.test(memory.text)), false);
+
+    const shared = await hot.search({
+      query: 'sparkling water',
+      userId: 'default',
+      sessionId: 'session-a',
+      topK: 10,
+    });
+    assert.equal(shared.memories.some((memory) => /sparkling water/.test(memory.text)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

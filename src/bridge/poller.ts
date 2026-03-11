@@ -3,6 +3,7 @@ import { hasMem0Auth, buildMem0Headers } from '../control/auth';
 import type { PluginDebugLogger } from '../debug/logger';
 import { backfillLifecycleFields } from '../memory/lifecycle';
 import { inferMemoryAnnotations } from '../memory/typing';
+import { resolveSharedUserId } from '../memory/user-space';
 import type { PluginConfig } from '../types';
 
 export class Mem0Poller {
@@ -42,7 +43,7 @@ export class Mem0Poller {
     try {
       this.debug?.basic('mem0_poller.start', { baseUrl: this.config.mem0BaseUrl, mode: this.config.mem0Mode });
       const url = new URL(`${this.config.mem0BaseUrl}/v1/memories/`);
-      url.searchParams.set('user_id', 'default');
+      url.searchParams.set('user_id', resolveSharedUserId());
       
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -76,7 +77,9 @@ export class Mem0Poller {
           confidence: mem.metadata?.confidence,
         });
         const payload = backfillLifecycleFields({
-          user_id: mem.user_id || 'default',
+          user_id: resolveSharedUserId(mem.user_id),
+          session_id: String(mem.metadata?.session_id || ''),
+          agent_id: String(mem.metadata?.agent_id || ''),
           run_id: mem.run_id || '',
           scope: mem.metadata?.scope || 'long-term',
           text: mem.memory || mem.text || '',

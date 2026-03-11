@@ -38,9 +38,9 @@ export class HotMemorySearch {
   }
 
   async search(params: SearchParams): Promise<SearchResult> {
-    const { query, userId, topK = 5, filters } = params;
+    const { query, userId = 'default', sessionId, topK = 5, filters } = params;
     const currentDim = this.config.embedding?.dimension || 16;
-    const whereClause = this.buildWhereClause(userId, filters);
+    const whereClause = this.buildWhereClause(userId, filters, sessionId);
     let queryVector: number[] | null | undefined;
     
     // 发现所有可用的记忆表
@@ -157,15 +157,23 @@ export class HotMemorySearch {
     return String(candidate.ts_event || '') > String(existing.ts_event || '');
   }
 
-  private buildWhereClause(userId: string, filters?: SearchParams['filters']): string {
-    let whereClause = `user_id = '${userId}' AND status = 'active'`;
-    if (filters?.scope) {
-      whereClause += ` AND scope = '${filters.scope}'`;
+  private buildWhereClause(userId: string, filters?: SearchParams['filters'], sessionId?: string): string {
+    const status = escapeSqlString(filters?.status || 'active');
+    const escapedUserId = escapeSqlString(userId);
+    const escapedSessionId = escapeSqlString(sessionId || '');
+    const sessionClause = escapedSessionId
+      ? `(scope = 'long-term' OR (scope = 'session' AND session_id = '${escapedSessionId}'))`
+      : `scope = 'long-term'`;
+
+    if (filters?.scope === 'session') {
+      return `user_id = '${escapedUserId}' AND status = '${status}' AND scope = 'session' AND session_id = '${escapedSessionId}'`;
     }
-    if (filters?.status) {
-      whereClause = `user_id = '${userId}' AND status = '${filters.status}'`;
+
+    if (filters?.scope === 'long-term') {
+      return `user_id = '${escapedUserId}' AND status = '${status}' AND scope = 'long-term'`;
     }
-    return whereClause;
+
+    return `user_id = '${escapedUserId}' AND status = '${status}' AND ${sessionClause}`;
   }
 
   private async searchFts(tbl: Awaited<ReturnType<typeof openMemoryTable>>, query: string, whereClause: string, topK: number): Promise<any[]> {
@@ -582,4 +590,8 @@ export class HotMemorySearch {
     }
     return [];
   }
+}
+
+function escapeSqlString(value: string): string {
+  return String(value || '').replace(/'/g, "''");
 }

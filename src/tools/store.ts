@@ -6,6 +6,7 @@ import { FileOutbox } from '../bridge/outbox';
 import { MemorySyncEngine } from '../bridge/sync-engine';
 import { HttpMem0Client } from '../control/mem0';
 import { backfillLifecycleFields } from '../memory/lifecycle';
+import { getScopedMemoryIdentity } from '../memory/user-space';
 import { sanitizeMemoryText } from '../capture/security';
 import { PluginDebugLogger, summarizeText } from '../debug/logger';
 import { inferMemoryAnnotations } from '../memory/typing';
@@ -21,11 +22,18 @@ export class MemoryStoreTool {
   }
 
   async execute(params: StoreParams): Promise<StoreResult> {
-    const { text, userId, scope = 'long-term', metadata = {}, categories = [] } = params;
+    const { text, scope = 'long-term', metadata = {}, categories = [] } = params;
+    const identity = getScopedMemoryIdentity({
+      scope,
+      userId: params.userId,
+      sessionId: params.sessionId || metadata.session_id,
+      agentId: params.agentId || metadata.agent_id,
+    });
 
     try {
       this.debug.basic('memory_store.start', {
-        userId,
+        userId: identity.userId,
+        sessionId: identity.sessionId || undefined,
         scope,
         categories: categories.length,
         ...summarizeText(text),
@@ -38,7 +46,9 @@ export class MemoryStoreTool {
       const engine = new MemorySyncEngine(outbox, auditStore, adapter, mem0Client);
       const payload = this.buildPayload({
         text,
-        userId,
+        userId: identity.userId,
+        sessionId: identity.sessionId,
+        agentId: identity.agentId,
         scope,
         metadata,
         categories,
@@ -67,6 +77,8 @@ export class MemoryStoreTool {
   private buildPayload(params: {
     text: string;
     userId: string;
+    sessionId?: string;
+    agentId?: string;
     scope: 'long-term' | 'session';
     metadata: Record<string, any>;
     categories: string[];
@@ -85,6 +97,8 @@ export class MemoryStoreTool {
     });
     return backfillLifecycleFields({
       user_id: params.userId,
+      session_id: params.sessionId || '',
+      agent_id: params.agentId || '',
       run_id: params.metadata.run_id || '',
       scope: params.scope,
       text: cleanText,
