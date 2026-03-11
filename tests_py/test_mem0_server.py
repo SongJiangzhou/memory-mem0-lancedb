@@ -53,6 +53,69 @@ class Mem0ServerConfigTests(unittest.TestCase):
         self.assertEqual(config["vector_store"]["config"]["embedding_model_dims"], 3072)
         self.assertTrue(config["history_db_path"].endswith(".mem0_runtime/history.db"))
 
+    def test_build_mem0_config_supports_voyage_embedder_with_plugin_llm_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            config_dir = home / ".openclaw"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (config_dir / "openclaw.json").write_text(
+                json.dumps(
+                    {
+                        "agents": {
+                            "defaults": {
+                                "memorySearch": {
+                                    "enabled": True,
+                                    "provider": "voyage",
+                                    "model": "voyage-4-lite",
+                                    "remote": {
+                                        "apiKey": "voyage-key",
+                                        "baseUrl": "https://api.voyageai.com/v1",
+                                    },
+                                }
+                            }
+                        },
+                        "plugins": {
+                            "entries": {
+                                "openclaw-mem0-lancedb": {
+                                    "config": {
+                                        "mem0": {
+                                            "llm": {
+                                                "provider": "deepseek",
+                                                "apiKey": "deepseek-key",
+                                                "baseUrl": "https://api.deepseek.com",
+                                                "model": "deepseek-chat",
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            previous_home = os.environ.get("HOME")
+            os.environ["HOME"] = str(home)
+            try:
+                config = mem0_server.build_mem0_config()
+            finally:
+                if previous_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = previous_home
+
+        self.assertEqual(config["embedder"]["provider"], "openai")
+        self.assertEqual(config["embedder"]["config"]["api_key"], "voyage-key")
+        self.assertEqual(config["embedder"]["config"]["model"], "voyage-4-lite")
+        self.assertEqual(config["embedder"]["config"]["embedding_dims"], 1024)
+        self.assertEqual(config["embedder"]["config"]["openai_base_url"], "https://api.voyageai.com/v1")
+        self.assertEqual(config["llm"]["provider"], "deepseek")
+        self.assertEqual(config["llm"]["config"]["api_key"], "deepseek-key")
+        self.assertEqual(config["llm"]["config"]["model"], "deepseek-chat")
+        self.assertEqual(config["llm"]["config"]["deepseek_base_url"], "https://api.deepseek.com")
+        self.assertEqual(config["vector_store"]["config"]["embedding_model_dims"], 1024)
+
     def test_build_mem0_config_allows_environment_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)

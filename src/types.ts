@@ -84,6 +84,14 @@ export interface Mem0Config {
   baseUrl: string;
   apiKey: string;
   autoStartLocal?: boolean;
+  llm?: Mem0LlmConfig;
+}
+
+export interface Mem0LlmConfig {
+  provider: 'openai' | 'gemini' | 'ollama' | 'deepseek';
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 export interface EmbeddingMigrationConfig {

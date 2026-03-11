@@ -51,6 +51,8 @@ type LocalMem0StartupDeps = {
 
 const PLUGIN_VERSION = readPluginVersion();
 let localMem0StartupPromise: Promise<{ started: boolean; healthy: boolean }> | null = null;
+const LOCAL_MEM0_STARTUP_POLL_INTERVAL_MS = 300;
+const LOCAL_MEM0_STARTUP_MAX_ATTEMPTS = 30;
 
 export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
   const mem0 = resolveMem0Config(raw);
@@ -76,7 +78,7 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
       },
     },
     autoCapture: {
-      enabled: raw?.autoCapture?.enabled || false,
+      enabled: raw?.autoCapture?.enabled ?? true,
       scope: raw?.autoCapture?.scope || 'long-term',
       requireAssistantReply: raw?.autoCapture?.requireAssistantReply ?? true,
       maxCharsPerMessage: raw?.autoCapture?.maxCharsPerMessage || 2000,
@@ -100,16 +102,27 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
 }
 
 function resolveMem0Config(raw?: Partial<PluginConfig>): NonNullable<PluginConfig['mem0']> {
-  const explicitBaseUrl = raw?.mem0?.baseUrl || 'https://api.mem0.ai';
+  const explicitMode = raw?.mem0?.mode || 'local';
+  const explicitBaseUrl = raw?.mem0?.baseUrl || (explicitMode === 'remote' ? 'https://api.mem0.ai' : 'http://127.0.0.1:8000');
   const explicitApiKey = raw?.mem0?.apiKey || '';
-  const explicitMode = raw?.mem0?.mode || 'remote';
   const explicitAutoStartLocal = raw?.mem0?.autoStartLocal;
+  const explicitLlm = raw?.mem0?.llm;
 
   return {
     mode: explicitMode,
     baseUrl: explicitBaseUrl,
     apiKey: explicitApiKey,
     autoStartLocal: explicitAutoStartLocal ?? explicitMode === 'local',
+    ...(explicitLlm
+      ? {
+        llm: {
+          provider: explicitLlm.provider,
+          ...(explicitLlm.baseUrl ? { baseUrl: explicitLlm.baseUrl } : {}),
+          ...(explicitLlm.apiKey ? { apiKey: explicitLlm.apiKey } : {}),
+          ...(explicitLlm.model ? { model: explicitLlm.model } : {}),
+        },
+      }
+      : {}),
   };
 }
 
@@ -551,8 +564,8 @@ export async function maybeAutoStartLocalMem0(
     }
     debug.basic('mem0.autostart.spawned', { baseUrl: config.mem0BaseUrl });
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await sleep(300);
+    for (let attempt = 0; attempt < LOCAL_MEM0_STARTUP_MAX_ATTEMPTS; attempt += 1) {
+      await sleep(LOCAL_MEM0_STARTUP_POLL_INTERVAL_MS);
       if (await checkHealth()) {
         debug.basic('mem0.autostart.ready', { baseUrl: config.mem0BaseUrl, attempt: attempt + 1 });
         return { started: true, healthy: true };

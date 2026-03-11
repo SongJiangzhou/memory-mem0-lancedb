@@ -22,8 +22,11 @@ test('resolveConfig sets embedding migration defaults', async () => {
   assert.equal(config.memoryConsolidation?.enabled, true);
   assert.equal(config.memoryConsolidation?.intervalMs, 6 * 60 * 60 * 1000);
   assert.equal(config.memoryConsolidation?.batchSize, 50);
+  assert.equal(config.mem0Mode, 'local');
+  assert.equal(config.mem0BaseUrl, 'http://127.0.0.1:8000');
   assert.equal(config.autoRecall.topK, 8);
   assert.equal(config.autoRecall.maxChars, 1400);
+  assert.equal(config.autoCapture.enabled, true);
 });
 
 test('resolveConfig uses the unified memory directory defaults', async () => {
@@ -68,6 +71,12 @@ test('resolveConfig maps nested mem0 config into explicit runtime mode', async (
       mode: 'local',
       baseUrl: 'http://127.0.0.1:8000',
       apiKey: '',
+      llm: {
+        provider: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        apiKey: 'deepseek-key',
+        model: 'deepseek-chat',
+      },
     },
   } as any);
 
@@ -75,6 +84,10 @@ test('resolveConfig maps nested mem0 config into explicit runtime mode', async (
   assert.equal(config.mem0BaseUrl, 'http://127.0.0.1:8000');
   assert.equal(config.mem0ApiKey, '');
   assert.equal(config.mem0?.autoStartLocal, true);
+  assert.equal(config.mem0?.llm?.provider, 'deepseek');
+  assert.equal(config.mem0?.llm?.baseUrl, 'https://api.deepseek.com');
+  assert.equal(config.mem0?.llm?.apiKey, 'deepseek-key');
+  assert.equal(config.mem0?.llm?.model, 'deepseek-chat');
 });
 
 test('resolveConfig maps voyage embedding from OpenClaw memorySearch config', async () => {

@@ -18,15 +18,37 @@
           "mode": {
             "type": "string",
             "enum": ["local", "remote", "disabled"],
-            "default": "remote"
+            "default": "local"
           },
           "baseUrl": {
             "type": "string",
-            "default": "https://api.mem0.ai"
+            "default": "http://127.0.0.1:8000"
           },
           "apiKey": {
             "type": "string",
             "default": ""
+          },
+          "llm": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": ["openai", "gemini", "ollama", "deepseek"],
+                "default": "deepseek"
+              },
+              "baseUrl": {
+                "type": "string",
+                "default": "https://api.deepseek.com"
+              },
+              "apiKey": {
+                "type": "string",
+                "default": ""
+              },
+              "model": {
+                "type": "string",
+                "default": "deepseek-chat"
+              }
+            }
           }
         }
       },
@@ -100,7 +122,7 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "default": false
+            "default": true
           },
           "scope": {
             "type": "string",

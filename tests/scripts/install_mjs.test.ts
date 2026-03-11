@@ -59,6 +59,10 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
 
   assert.equal(pluginConfig?.mem0?.mode, 'local');
   assert.equal(pluginConfig?.mem0?.baseUrl, 'http://127.0.0.1:8000');
+  assert.equal(pluginConfig?.mem0?.llm?.provider, 'deepseek');
+  assert.equal(pluginConfig?.mem0?.llm?.baseUrl, 'https://api.deepseek.com');
+  assert.equal(pluginConfig?.mem0?.llm?.apiKey, '');
+  assert.equal(pluginConfig?.mem0?.llm?.model, 'deepseek-chat');
   assert.equal(pluginConfig?.lancedbPath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'lancedb'));
   assert.equal(pluginConfig?.outboxDbPath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'outbox.json'));
   assert.equal(pluginConfig?.auditStorePath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'audit', 'memory_records.jsonl'));
@@ -70,6 +74,10 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
   assert.equal(pluginConfig?.autoRecall?.reranker?.baseUrl, 'https://api.voyageai.com/v1');
   assert.equal(pluginConfig?.autoRecall?.reranker?.apiKey, '');
   assert.equal(pluginConfig?.autoRecall?.reranker?.model, 'rerank-2.5-lite');
+  assert.equal(pluginConfig?.autoCapture?.enabled, true);
+  assert.equal(pluginConfig?.autoCapture?.scope, 'long-term');
+  assert.equal(pluginConfig?.autoCapture?.requireAssistantReply, true);
+  assert.equal(pluginConfig?.autoCapture?.maxCharsPerMessage, 2000);
 });
 
 serialTest('install.mjs --skip-config leaves openclaw.json unchanged', () => {
@@ -112,6 +120,12 @@ serialTest('buildDefaultPluginConfig preserves an existing remote mem0 api key',
       mode: 'remote',
       baseUrl: 'https://api.mem0.ai',
       apiKey: 'existing-test-key',
+      llm: {
+        provider: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        apiKey: 'existing-deepseek-key',
+        model: 'deepseek-chat',
+      },
     },
     autoRecall: {
       enabled: true,
@@ -130,6 +144,10 @@ serialTest('buildDefaultPluginConfig preserves an existing remote mem0 api key',
   assert.equal(config.mem0.mode, 'remote');
   assert.equal(config.mem0.baseUrl, 'https://api.mem0.ai');
   assert.equal(config.mem0.apiKey, 'existing-test-key');
+  assert.equal(config.mem0.llm.provider, 'deepseek');
+  assert.equal(config.mem0.llm.baseUrl, 'https://api.deepseek.com');
+  assert.equal(config.mem0.llm.apiKey, 'existing-deepseek-key');
+  assert.equal(config.mem0.llm.model, 'deepseek-chat');
   assert.equal(config.lancedbPath, join(memoryRoot, 'lancedb'));
   assert.equal(config.outboxDbPath, join(memoryRoot, 'outbox.json'));
   assert.equal(config.auditStorePath, join(memoryRoot, 'audit', 'memory_records.jsonl'));
@@ -161,6 +179,20 @@ serialTest('buildDefaultPluginConfig preserves an existing reranker api key even
 
   assert.equal(config.autoRecall.reranker.provider, 'local');
   assert.equal(config.autoRecall.reranker.apiKey, 'existing-rerank-key');
+});
+
+serialTest('buildDefaultPluginConfig defaults mem0 to disabled when auto capture is off and no mem0 mode exists', async () => {
+  const installer = await import(INSTALLER_PATH);
+  const config = installer.buildDefaultPluginConfig({
+    autoCapture: {
+      enabled: false,
+    },
+  });
+
+  assert.equal(config.autoCapture.enabled, false);
+  assert.equal(config.mem0.mode, 'disabled');
+  assert.equal(config.mem0.baseUrl, '');
+  assert.equal(config.mem0.apiKey, '');
 });
 
 serialTest('resolve prompt helpers fall back to current values for blank input', async () => {

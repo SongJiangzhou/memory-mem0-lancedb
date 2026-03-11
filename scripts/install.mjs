@@ -22,6 +22,10 @@ const STRINGS = {
     mem0Mode: 'Mem0 mode',
     mem0LocalUrl: 'Local Mem0 URL',
     mem0ApiKey: 'Mem0 API key',
+    mem0LlmProvider: 'Local Mem0 LLM provider',
+    mem0LlmBaseUrl: 'Local Mem0 LLM base URL',
+    mem0LlmApiKey: 'Local Mem0 LLM API key',
+    mem0LlmModel: 'Local Mem0 LLM model',
     autoRecall: 'Enable auto recall?',
     autoRecallTopK: 'Max memories to inject (topK)',
     autoRecallMaxChars: 'Max chars for injected context',
@@ -42,6 +46,10 @@ const STRINGS = {
       mem0Local: 'Local Mem0 (self-hosted, no API key needed)',
       mem0Remote: 'Cloud Mem0 (api.mem0.ai, requires API key)',
       mem0Disabled: 'Disable Mem0 (LanceDB-only, no sync)',
+      mem0LlmDeepseek: 'deepseek (recommended)',
+      mem0LlmGemini: 'gemini',
+      mem0LlmOpenAI: 'openai',
+      mem0LlmOllama: 'ollama',
       recallAll: 'all (long-term + session)',
       recallLongTerm: 'long-term only',
       rerankerLocal: 'local (built-in lightweight reranker)',
@@ -63,6 +71,10 @@ const STRINGS = {
     mem0Mode: 'Mem0 后端模式',
     mem0LocalUrl: '本地 Mem0 URL',
     mem0ApiKey: 'Mem0 API Key',
+    mem0LlmProvider: '本地 Mem0 LLM 提供商',
+    mem0LlmBaseUrl: '本地 Mem0 LLM Base URL',
+    mem0LlmApiKey: '本地 Mem0 LLM API Key',
+    mem0LlmModel: '本地 Mem0 LLM 模型',
     autoRecall: '是否启用自动召回？',
     autoRecallTopK: '最大注入记忆条数 (topK)',
     autoRecallMaxChars: '注入上下文的最大字符限制',
@@ -83,6 +95,10 @@ const STRINGS = {
       mem0Local: '本地 Mem0 (自托管运行，不需要 API Key)',
       mem0Remote: '云端 Mem0 (api.mem0.ai，需要提供 API Key)',
       mem0Disabled: '禁用 Mem0 (仅使用 LanceDB，不进行外部同步)',
+      mem0LlmDeepseek: 'deepseek（推荐）',
+      mem0LlmGemini: 'gemini',
+      mem0LlmOpenAI: 'openai',
+      mem0LlmOllama: 'ollama',
       recallAll: 'all (全局：包含长短期记忆)',
       recallLongTerm: 'long-term only (仅长期记忆)',
       rerankerLocal: 'local (内置轻量精排)',
@@ -200,13 +216,19 @@ function loadJson(filePath) {
 
 export function buildDefaultPluginConfig(existingConfig = {}) {
   const existingMem0 = existingConfig?.mem0 || {};
+  const existingMem0Llm = existingMem0?.llm || {};
   const existingAutoRecall = existingConfig?.autoRecall || {};
   const existingAutoCapture = existingConfig?.autoCapture || {};
   const existingDebug = existingConfig?.debug || {};
   const existingReranker = existingConfig?.autoRecall?.reranker || {};
   const memoryRoot = path.join(os.homedir(), '.openclaw', 'workspace', 'data', 'memory');
-  const mem0Mode = existingMem0.mode || 'local';
-  const mem0BaseUrl = existingMem0.baseUrl || (mem0Mode === 'remote' ? 'https://api.mem0.ai' : 'http://127.0.0.1:8000');
+  const autoCaptureEnabled = existingAutoCapture.enabled ?? true;
+  const mem0Mode = existingMem0.mode || (autoCaptureEnabled ? 'local' : 'disabled');
+  const mem0BaseUrl = mem0Mode === 'remote'
+    ? (existingMem0.baseUrl || 'https://api.mem0.ai')
+    : mem0Mode === 'local'
+      ? (existingMem0.baseUrl || 'http://127.0.0.1:8000')
+      : '';
 
   return {
     lancedbPath: path.join(memoryRoot, 'lancedb'),
@@ -214,6 +236,12 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
       mode: mem0Mode,
       baseUrl: mem0BaseUrl,
       apiKey: mem0Mode === 'remote' ? existingMem0.apiKey || '' : '',
+      llm: {
+        provider: existingMem0Llm.provider || 'deepseek',
+        baseUrl: existingMem0Llm.baseUrl || 'https://api.deepseek.com',
+        apiKey: existingMem0Llm.apiKey || '',
+        model: existingMem0Llm.model || 'deepseek-chat',
+      },
     },
     outboxDbPath: path.join(memoryRoot, 'outbox.json'),
     auditStorePath: path.join(memoryRoot, 'audit', 'memory_records.jsonl'),
@@ -233,7 +261,7 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
       },
     },
     autoCapture: {
-      enabled: existingAutoCapture.enabled ?? false,
+      enabled: autoCaptureEnabled,
       scope: existingAutoCapture.scope || 'long-term',
       requireAssistantReply: existingAutoCapture.requireAssistantReply ?? true,
       maxCharsPerMessage: existingAutoCapture.maxCharsPerMessage || 2000,
@@ -244,44 +272,19 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
 
 export async function promptForConfig(strings, existingConfig = {}) {
   const existingMem0 = existingConfig?.mem0 || {};
+  const existingMem0Llm = existingMem0?.llm || {};
   const existingAutoRecall = existingConfig?.autoRecall || {};
   const existingAutoCapture = existingConfig?.autoCapture || {};
   const existingDebug = existingConfig?.debug || {};
   const existingReranker = existingConfig?.autoRecall?.reranker || {};
   const memoryRoot = path.join(os.homedir(), '.openclaw', 'workspace', 'data', 'memory');
-  const mem0Mode = await select({
-    message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, strings),
-    options: [
-      { value: 'local', label: strings.choices.mem0Local },
-      { value: 'remote', label: strings.choices.mem0Remote },
-      { value: 'disabled', label: strings.choices.mem0Disabled },
-    ],
-    initialValue: existingMem0.mode || 'local',
-  });
-  if (isCancel(mem0Mode)) process.exit(1);
-
-  let mem0BaseUrl = 'https://api.mem0.ai';
+  let mem0Mode = existingMem0.mode || (existingAutoCapture.enabled ?? true ? 'local' : 'disabled');
+  let mem0BaseUrl = mem0Mode === 'remote' ? 'https://api.mem0.ai' : '';
   let mem0ApiKey = '';
-  if (mem0Mode === 'local') {
-    const currentLocalUrl = existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000';
-    const value = await text({
-      message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', strings),
-      defaultValue: currentLocalUrl,
-      placeholder: currentLocalUrl,
-    });
-    if (isCancel(value)) process.exit(1);
-    mem0BaseUrl = resolveTextPromptValue(value, currentLocalUrl);
-  } else if (mem0Mode === 'remote') {
-    mem0BaseUrl = existingMem0.mode === 'remote' ? existingMem0.baseUrl || 'https://api.mem0.ai' : 'https://api.mem0.ai';
-    const currentApiKey = existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '';
-    const value = await text({
-      message: withDefaultHint(strings.mem0ApiKey, '', strings),
-      defaultValue: currentApiKey,
-      placeholder: currentApiKey,
-    });
-    if (isCancel(value)) process.exit(1);
-    mem0ApiKey = resolveTextPromptValue(value, currentApiKey);
-  }
+  let mem0LlmProvider = existingMem0Llm.provider || 'deepseek';
+  let mem0LlmBaseUrl = existingMem0Llm.baseUrl || 'https://api.deepseek.com';
+  let mem0LlmApiKey = existingMem0Llm.apiKey || '';
+  let mem0LlmModel = existingMem0Llm.model || 'deepseek-chat';
 
   const autoRecallEnabled = await confirm({
     message: withDefaultHint(strings.autoRecall, 'true', strings),
@@ -364,14 +367,103 @@ export async function promptForConfig(strings, existingConfig = {}) {
   }
 
   const autoCaptureEnabled = await confirm({
-    message: withDefaultHint(strings.autoCapture, 'false', strings),
-    initialValue: existingAutoCapture.enabled ?? false,
+    message: withDefaultHint(strings.autoCapture, 'true', strings),
+    initialValue: existingAutoCapture.enabled ?? true,
   });
   if (isCancel(autoCaptureEnabled)) process.exit(1);
   let autoCaptureScope = existingAutoCapture.scope || 'long-term';
   let autoCaptureRequireReply = existingAutoCapture.requireAssistantReply ?? true;
   let autoCaptureMaxChars = Number(existingAutoCapture.maxCharsPerMessage ?? 2000);
   if (autoCaptureEnabled) {
+    mem0Mode = await select({
+      message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, strings),
+      options: [
+        { value: 'local', label: strings.choices.mem0Local },
+        { value: 'remote', label: strings.choices.mem0Remote },
+        { value: 'disabled', label: strings.choices.mem0Disabled },
+      ],
+      initialValue: existingMem0.mode && existingMem0.mode !== 'disabled' ? existingMem0.mode : 'local',
+    });
+    if (isCancel(mem0Mode)) process.exit(1);
+
+    if (mem0Mode === 'local') {
+      const currentLocalUrl = existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000';
+      const value = await text({
+        message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', strings),
+        defaultValue: currentLocalUrl,
+        placeholder: currentLocalUrl,
+      });
+      if (isCancel(value)) process.exit(1);
+      mem0BaseUrl = resolveTextPromptValue(value, currentLocalUrl);
+      mem0ApiKey = '';
+
+      mem0LlmProvider = await select({
+        message: withDefaultHint(strings.mem0LlmProvider, strings.choices.mem0LlmDeepseek, strings),
+        options: [
+          { value: 'deepseek', label: strings.choices.mem0LlmDeepseek },
+          { value: 'gemini', label: strings.choices.mem0LlmGemini },
+          { value: 'openai', label: strings.choices.mem0LlmOpenAI },
+          { value: 'ollama', label: strings.choices.mem0LlmOllama },
+        ],
+        initialValue: mem0LlmProvider,
+      });
+      if (isCancel(mem0LlmProvider)) process.exit(1);
+
+      const llmBaseUrlDefault = mem0LlmProvider === 'deepseek'
+        ? 'https://api.deepseek.com'
+        : mem0LlmProvider === 'gemini'
+          ? ''
+          : mem0LlmProvider === 'ollama'
+            ? 'http://127.0.0.1:11434'
+            : 'https://api.openai.com/v1';
+      const llmModelDefault = mem0LlmProvider === 'deepseek'
+        ? 'deepseek-chat'
+        : mem0LlmProvider === 'gemini'
+          ? 'gemini-2.0-flash'
+          : mem0LlmProvider === 'ollama'
+            ? 'llama3.1:70b'
+            : 'gpt-4.1-nano-2025-04-14';
+
+      const llmBaseUrl = await text({
+        message: withDefaultHint(strings.mem0LlmBaseUrl, llmBaseUrlDefault, strings),
+        defaultValue: mem0LlmBaseUrl || llmBaseUrlDefault,
+        placeholder: mem0LlmBaseUrl || llmBaseUrlDefault,
+      });
+      if (isCancel(llmBaseUrl)) process.exit(1);
+      mem0LlmBaseUrl = resolveTextPromptValue(llmBaseUrl, mem0LlmBaseUrl || llmBaseUrlDefault);
+
+      const llmApiKey = await text({
+        message: withDefaultHint(strings.mem0LlmApiKey, '', strings),
+        defaultValue: mem0LlmApiKey,
+        placeholder: mem0LlmApiKey,
+      });
+      if (isCancel(llmApiKey)) process.exit(1);
+      mem0LlmApiKey = resolveTextPromptValue(llmApiKey, mem0LlmApiKey);
+
+      const llmModel = await text({
+        message: withDefaultHint(strings.mem0LlmModel, llmModelDefault, strings),
+        defaultValue: mem0LlmModel || llmModelDefault,
+        placeholder: llmModelDefault,
+      });
+      if (isCancel(llmModel)) process.exit(1);
+      mem0LlmModel = resolveTextPromptValue(llmModel, mem0LlmModel || llmModelDefault);
+    } else if (mem0Mode === 'remote') {
+      const currentRemoteUrl = existingMem0.mode === 'remote' ? existingMem0.baseUrl || 'https://api.mem0.ai' : 'https://api.mem0.ai';
+      mem0BaseUrl = currentRemoteUrl;
+
+      const currentApiKey = existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '';
+      const value = await text({
+        message: withDefaultHint(strings.mem0ApiKey, '', strings),
+        defaultValue: currentApiKey,
+        placeholder: currentApiKey,
+      });
+      if (isCancel(value)) process.exit(1);
+      mem0ApiKey = resolveTextPromptValue(value, currentApiKey);
+    } else {
+      mem0BaseUrl = '';
+      mem0ApiKey = '';
+    }
+
     autoCaptureScope = await select({
       message: withDefaultHint(strings.autoCaptureScope, strings.choices.captureLongTerm, strings),
       options: [
@@ -392,6 +484,10 @@ export async function promptForConfig(strings, existingConfig = {}) {
       defaultValue: currentAutoCaptureMaxChars,
       placeholder: '2000',
     }), currentAutoCaptureMaxChars);
+  } else {
+    mem0Mode = 'disabled';
+    mem0BaseUrl = '';
+    mem0ApiKey = '';
   }
 
   const debugChoice = await select({
@@ -423,6 +519,12 @@ export async function promptForConfig(strings, existingConfig = {}) {
       mode: mem0Mode,
       baseUrl: mem0BaseUrl,
       apiKey: mem0ApiKey,
+      llm: {
+        provider: mem0LlmProvider,
+        baseUrl: mem0LlmBaseUrl,
+        apiKey: mem0LlmApiKey,
+        model: mem0LlmModel,
+      },
     },
     outboxDbPath: path.join(memoryRoot, 'outbox.json'),
     auditStorePath: path.join(memoryRoot, 'audit', 'memory_records.jsonl'),
