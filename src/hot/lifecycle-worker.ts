@@ -100,7 +100,7 @@ export class MemoryLifecycleWorker {
       }
 
       await this.auditStore.append(updated);
-      await this.adapter.upsertMemory({
+      await this.adapter.updateMemoryMetadata({
         memory_uid: updated.memory_uid,
         memory: toPayload(updated),
       });

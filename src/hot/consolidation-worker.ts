@@ -93,7 +93,7 @@ export class MemoryConsolidationWorker {
       seen.add(item.duplicate.memory_uid);
       const updated = supersedeRecord(item.duplicate);
       await this.auditStore.append(updated);
-      await this.adapter.upsertMemory({
+      await this.adapter.updateMemoryMetadata({
         memory_uid: updated.memory_uid,
         memory: toPayload(updated),
       });

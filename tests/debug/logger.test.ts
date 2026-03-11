@@ -70,7 +70,11 @@ test('debug logger mirrors structured events to a JSONL file when logDir is conf
     const logger = new PluginDebugLogger({ mode: 'basic', logDir: dir });
     logger.basic('auto_capture.submitted', { eventId: 'evt-1', userId: 'user-1' });
 
-    const date = new Date().toISOString().slice(0, 10);
+    const date = new Intl.DateTimeFormat('sv-SE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
     const content = readFileSync(join(dir, `${date}.log`), 'utf-8');
 
     assert.match(content, /auto_capture\.submitted/);

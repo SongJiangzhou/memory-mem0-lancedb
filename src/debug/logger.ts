@@ -12,6 +12,21 @@ export interface PluginLoggerSink {
 
 const TEXT_PREVIEW_LIMIT = 200;
 const REDACTED = '[redacted]';
+const LOCAL_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  fractionalSecondDigits: 3,
+  hour12: false,
+});
+const LOCAL_DATE_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 export class PluginDebugLogger {
   private readonly config: DebugConfig;
@@ -48,7 +63,7 @@ export class PluginDebugLogger {
 
   private emit(level: 'info' | 'warn' | 'error', event: string, fields?: Record<string, unknown>): void {
     const payload = {
-      ts: new Date().toISOString(),
+      ts: formatLocalTimestamp(new Date()),
       level,
       event,
       fields: sanitizeFields(fields || {}),
@@ -71,7 +86,7 @@ export class PluginDebugLogger {
     try {
       const resolvedDir = resolvePath(this.config.logDir || '');
       mkdirSync(resolvedDir, { recursive: true });
-      const logPath = path.join(resolvedDir, `${new Date().toISOString().slice(0, 10)}.log`);
+      const logPath = path.join(resolvedDir, `${formatLocalDateStamp(new Date())}.log`);
       appendFileSync(logPath, `${line}\n`, 'utf-8');
     } catch {
       // Never let file logging break the caller.
@@ -114,4 +129,19 @@ function resolvePath(targetPath: string): string {
   }
 
   return targetPath;
+}
+
+function formatLocalTimestamp(value: Date): string {
+  const dateTime = LOCAL_DATE_TIME_FORMATTER.format(value).replace(' ', 'T');
+  const offsetMinutes = -value.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = String(Math.floor(absOffsetMinutes / 60)).padStart(2, '0');
+  const offsetMins = String(absOffsetMinutes % 60).padStart(2, '0');
+
+  return `${dateTime}${sign}${offsetHours}:${offsetMins}`;
+}
+
+function formatLocalDateStamp(value: Date): string {
+  return LOCAL_DATE_FORMATTER.format(value);
 }

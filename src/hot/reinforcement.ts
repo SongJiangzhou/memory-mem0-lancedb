@@ -21,7 +21,7 @@ export async function reinforceRecalledMemories(params: {
     }
     const updated = reinforceLifecycle(current, nowIso);
     await params.auditStore.append(updated);
-    await params.adapter.upsertMemory({
+    await params.adapter.updateMemoryMetadata({
       memory_uid: updated.memory_uid,
       memory: toPayload(updated),
     });

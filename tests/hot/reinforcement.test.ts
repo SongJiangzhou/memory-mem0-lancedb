@@ -5,14 +5,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { FileAuditStore } from '../../src/audit/store';
-import { InMemoryMemoryAdapter } from '../../src/bridge/adapter';
+import { InMemoryMemoryAdapter, type MemoryAdapterRecord } from '../../src/bridge/adapter';
 import { reinforceRecalledMemories } from '../../src/hot/reinforcement';
+
+class TrackingMemoryAdapter extends InMemoryMemoryAdapter {
+  metadataUpdates = 0;
+  upserts = 0;
+
+  override async upsertMemory(record: MemoryAdapterRecord): Promise<void> {
+    this.upserts += 1;
+    return super.upsertMemory(record);
+  }
+
+  override async updateMemoryMetadata(record: MemoryAdapterRecord): Promise<void> {
+    this.metadataUpdates += 1;
+    return super.updateMemoryMetadata(record);
+  }
+}
 
 test('reinforceRecalledMemories upgrades recalled memories in audit and adapter', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'reinforcement-'));
   try {
     const auditStore = new FileAuditStore(join(dir, 'audit.jsonl'));
-    const adapter = new InMemoryMemoryAdapter();
+    const adapter = new TrackingMemoryAdapter();
 
     await auditStore.append({
       memory_uid: 'recall-1',
@@ -74,6 +89,8 @@ test('reinforceRecalledMemories upgrades recalled memories in audit and adapter'
     assert.equal((latest.access_count || 0) > 0, true);
     assert.equal((latest.stability || 0) > 30, true);
     assert.equal((latest.utility_score || 0) > 0.5, true);
+    assert.equal(adapter.metadataUpdates, 1);
+    assert.equal(adapter.upserts, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
