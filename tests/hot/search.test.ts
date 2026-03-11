@@ -7,8 +7,9 @@ import test from 'node:test';
 import { MemoryStoreTool } from '../../src/tools/store';
 import { HotMemorySearch } from '../../src/hot/search';
 import { openMemoryTable } from '../../src/db/table';
+import * as embedder from '../../src/hot/embedder';
 
-test('hot plane search returns canonical memory rows with filters', async () => {
+test('hot plane search returns canonical memory rows with filters', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 
   try {
@@ -56,7 +57,7 @@ test('hot plane search returns canonical memory rows with filters', async () => 
   }
 });
 
-test('hot plane hybrid search includes vector-only candidates through explicit fusion', async () => {
+test('hot plane hybrid search includes vector-only candidates through explicit fusion', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 
   try {
@@ -99,7 +100,7 @@ test('hot plane hybrid search includes vector-only candidates through explicit f
   }
 });
 
-test('hot plane exact token query ranks exact substring hit first', async () => {
+test('hot plane exact token query ranks exact substring hit first', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 
   try {
@@ -149,7 +150,7 @@ test('hot plane exact token query ranks exact substring hit first', async () => 
   }
 });
 
-test('hot plane search deduplicates rows with identical text but different memory ids', async () => {
+test('hot plane search deduplicates rows with identical text but different memory ids', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 
   try {
@@ -228,7 +229,122 @@ test('hot plane search deduplicates rows with identical text but different memor
   }
 });
 
-test('hot plane password-style question prefers the memory containing the exact token', async () => {
+test('hot plane search logs embedding failures and falls back to ranked rows', { concurrency: false }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
+
+  try {
+    const cfg = {
+      lancedbPath: dir,
+      mem0BaseUrl: '',
+      mem0ApiKey: '',
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+      autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+      embedding: { provider: 'voyage-invalid' as any, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+    };
+    const tbl = await openMemoryTable(dir, 16);
+    const hot = new HotMemorySearch(cfg);
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    };
+
+    try {
+      await tbl.add([{
+        memory_uid: 'fallback-1',
+        user_id: 'user-1',
+        run_id: '',
+        scope: 'long-term',
+        text: 'User prefers grilled chicken burgers at McDonalds',
+        categories: ['preference'],
+        tags: [],
+        memory_type: 'preference',
+        domains: ['food'],
+        source_kind: 'user_explicit',
+        confidence: 0.9,
+        ts_event: '2026-03-11T00:00:00.000Z',
+        source: 'openclaw',
+        status: 'active',
+        sensitivity: 'internal',
+        openclaw_refs: '{}',
+        mem0_id: '',
+        mem0_event_id: '',
+        mem0_hash: '',
+        lancedb_row_key: 'fallback-1',
+        vector: new Array(16).fill(0.3),
+      }]);
+
+      const result = await hot.search({
+        query: 'McDonalds',
+        userId: 'user-1',
+        topK: 5,
+        filters: { scope: 'long-term' },
+      });
+
+      assert.equal(result.source, 'lancedb');
+      assert.ok(result.memories.length >= 1);
+      assert.match(result.memories[0]?.text || '', /McDonalds/);
+      assert.ok(warnings.some((line) => line.includes('Query embedding failed')));
+      assert.ok(warnings.some((line) => line.includes('MMR query embedding failed')));
+    } finally {
+      console.warn = originalWarn;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hot plane search reuses a single query embedding for vector search and MMR', { concurrency: false }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
+
+  try {
+    const cfg = {
+      lancedbPath: dir,
+      mem0BaseUrl: '',
+      mem0ApiKey: '',
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+      autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+    };
+    const store = new MemoryStoreTool(cfg);
+    const hot = new HotMemorySearch(cfg);
+    const originalEmbed = embedder.embedText;
+    let callCount = 0;
+    (embedder as any).embedText = async (...args: unknown[]) => {
+      callCount += 1;
+      return originalEmbed(...args as [string, typeof cfg.embedding]);
+    };
+
+    try {
+      await store.execute({
+        text: 'User prefers grilled chicken burgers at McDonalds',
+        userId: 'user-1',
+        scope: 'long-term',
+        categories: ['preference'],
+      });
+
+      const result = await hot.search({
+        query: 'McDonalds grilled chicken burger',
+        userId: 'user-1',
+        topK: 5,
+        filters: { scope: 'long-term' },
+      });
+
+      assert.ok(result.memories.length >= 1);
+      assert.equal(callCount, 2);
+    } finally {
+      (embedder as any).embedText = originalEmbed;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hot plane password-style question prefers the memory containing the exact token', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 
   try {
@@ -278,7 +394,7 @@ test('hot plane password-style question prefers the memory containing the exact 
   }
 });
 
-test('hot plane ranking penalizes metadata and test-token noise for non-credential preference queries', () => {
+test('hot plane ranking penalizes metadata and test-token noise for non-credential preference queries', { concurrency: false }, () => {
   const cfg = {
     lancedbPath: '',
     mem0BaseUrl: '',
@@ -324,7 +440,7 @@ test('hot plane ranking penalizes metadata and test-token noise for non-credenti
   assert.equal(ranked.some((row: any) => row.memory_uid === 'noise-token'), false);
 });
 
-test('hot plane preference intent reranking boosts preference memories for game-like queries', () => {
+test('hot plane preference intent reranking boosts preference memories for game-like queries', { concurrency: false }, () => {
   const cfg = {
     lancedbPath: '',
     mem0BaseUrl: '',
@@ -361,7 +477,7 @@ test('hot plane preference intent reranking boosts preference memories for game-
   assert.equal(ranked[0]?.memory_uid, 'game-preference');
 });
 
-test('hot plane ranking prefers concise preference memories over long summaries', () => {
+test('hot plane ranking prefers concise preference memories over long summaries', { concurrency: false }, () => {
   const cfg = {
     lancedbPath: '',
     mem0BaseUrl: '',
@@ -404,7 +520,7 @@ test('hot plane ranking prefers concise preference memories over long summaries'
   assert.equal(ranked[0]?.memory_uid, 'concise-preference');
 });
 
-test('hot plane ranking prefers higher-confidence explicit memories over inferred ones', () => {
+test('hot plane ranking prefers higher-confidence explicit memories over inferred ones', { concurrency: false }, () => {
   const cfg = {
     lancedbPath: '',
     mem0BaseUrl: '',

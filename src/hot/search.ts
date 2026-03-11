@@ -40,6 +40,7 @@ export class HotMemorySearch {
     const { query, userId, topK = 5, filters } = params;
     const currentDim = this.config.embedding?.dimension || 16;
     const whereClause = this.buildWhereClause(userId, filters);
+    let queryVector: number[] | null | undefined;
     
     // 发现所有可用的记忆表
     const allTables = await discoverMemoryTables(this.config.lancedbPath, currentDim);
@@ -53,7 +54,8 @@ export class HotMemorySearch {
       if (dimension === currentDim) {
         const fetchK = Math.max(topK * 6, 24);
         const ftsRows = await this.searchFts(tbl, query, whereClause, fetchK);
-        const vectorRows = await this.searchVector(tbl, query, whereClause, fetchK);
+        queryVector = queryVector === undefined ? await this.getQueryVector(query) : queryVector;
+        const vectorRows = await this.searchVector(tbl, queryVector, whereClause, fetchK);
         const merged = this.mergeRrf(ftsRows, vectorRows, fetchK);
         allRows.push(...merged.map(r => ({ ...r, _sourceDim: dimension })));
       } else {
@@ -89,13 +91,21 @@ export class HotMemorySearch {
     
     let finalRows: any[];
     if (currentDimRows.length > 0) {
-      const queryVector = await embedText(query, this.config.embedding);
-      const mmrSelected = this.applyMmr(currentDimRows, queryVector, topK);
-      // 如果MMR结果不够，补充其他维度的结果
-      if (mmrSelected.length < topK && otherDimRows.length > 0) {
-        finalRows = [...mmrSelected, ...otherDimRows.slice(0, topK - mmrSelected.length)];
-      } else {
-        finalRows = mmrSelected.slice(0, topK);
+      try {
+        queryVector = queryVector === undefined ? await this.getQueryVector(query) : queryVector;
+        if (!queryVector) {
+          throw new Error('query embedding unavailable');
+        }
+        const mmrSelected = this.applyMmr(currentDimRows, queryVector, topK);
+        // 如果MMR结果不够，补充其他维度的结果
+        if (mmrSelected.length < topK && otherDimRows.length > 0) {
+          finalRows = [...mmrSelected, ...otherDimRows.slice(0, topK - mmrSelected.length)];
+        } else {
+          finalRows = mmrSelected.slice(0, topK);
+        }
+      } catch (error) {
+        console.warn('[hot/search] MMR query embedding failed, falling back to ranked rows:', this.describeError(error));
+        finalRows = ranked.slice(0, topK);
       }
     } else {
       // 没有当前维度的结果，直接返回其他维度的排序结果
@@ -167,17 +177,38 @@ export class HotMemorySearch {
     }
   }
 
-  private async searchVector(tbl: Awaited<ReturnType<typeof openMemoryTable>>, query: string, whereClause: string, topK: number): Promise<any[]> {
+  private async searchVector(tbl: Awaited<ReturnType<typeof openMemoryTable>>, queryVector: number[] | null, whereClause: string, topK: number): Promise<any[]> {
+    if (!queryVector) {
+      return [];
+    }
+
     try {
-      const queryVector = await embedText(query, this.config.embedding);
       return await (tbl as any)
         .search(queryVector)
         .where(whereClause)
         .limit(topK)
         .toArray();
-    } catch {
+    } catch (error) {
+      console.warn('[hot/search] Vector search skipped because query embedding failed:', this.describeError(error));
       return [];
     }
+  }
+
+  private async getQueryVector(query: string): Promise<number[] | null> {
+    try {
+      return await embedText(query, this.config.embedding);
+    } catch (error) {
+      console.warn('[hot/search] Query embedding failed:', this.describeError(error));
+      return null;
+    }
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
   }
 
   private mergeRrf(ftsRows: any[], vectorRows: any[], topK: number): any[] {

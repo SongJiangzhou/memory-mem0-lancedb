@@ -3,18 +3,20 @@ import { getMemoryTableName } from './schema';
 import * as os from 'os';
 import * as path from 'path';
 
+const dbCache = new Map<string, Promise<any>>();
+
 export async function openMemoryTable(dbPath: string, dim: number = 16) {
-  const resolvedPath = dbPath.startsWith('~/')
-    ? path.join(os.homedir(), dbPath.slice(2))
-    : dbPath;
+  const resolvedPath = resolveDbPath(dbPath);
 
   const tableName = getMemoryTableName(dim);
 
-  const db = await lancedb.connect(resolvedPath);
+  const db = await getDb(resolvedPath);
   const tables = await db.tableNames();
 
   if (tables.includes(tableName)) {
-    return db.openTable(tableName);
+    const tbl = await db.openTable(tableName);
+    await ensureFtsIndex(tbl);
+    return tbl;
   }
 
   // 建表，使用占位记录定义 schema
@@ -49,19 +51,20 @@ export async function openMemoryTable(dbPath: string, dim: number = 16) {
     await tbl.createIndex('user_id'); // Scalar index
     await tbl.createIndex('status'); // Scalar index
     await tbl.createIndex('scope'); // Scalar index
+    await tbl.createIndex('mem0_hash'); // Scalar index
   } catch (err) {
     console.warn('Index creation failed or already exists', err);
   }
+
+  await ensureFtsIndex(tbl);
 
   return tbl;
 }
 
 export async function openMemoryTableByName(dbPath: string, tableName: string) {
-  const resolvedPath = dbPath.startsWith('~/')
-    ? path.join(os.homedir(), dbPath.slice(2))
-    : dbPath;
+  const resolvedPath = resolveDbPath(dbPath);
 
-  const db = await lancedb.connect(resolvedPath);
+  const db = await getDb(resolvedPath);
   return db.openTable(tableName);
 }
 
@@ -91,4 +94,21 @@ export function sanitizeRecordsForSchema(
     }
     return sanitized;
   });
+}
+
+function resolveDbPath(dbPath: string): string {
+  return dbPath.startsWith('~/')
+    ? path.join(os.homedir(), dbPath.slice(2))
+    : dbPath;
+}
+
+async function getDb(resolvedPath: string): Promise<any> {
+  const cached = dbCache.get(resolvedPath);
+  if (cached) {
+    return cached;
+  }
+
+  const connectionPromise = lancedb.connect(resolvedPath);
+  dbCache.set(resolvedPath, connectionPromise);
+  return connectionPromise;
 }

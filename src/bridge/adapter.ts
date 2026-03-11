@@ -55,6 +55,7 @@ export class InMemoryMemoryAdapter implements MemoryAdapter {
 export class LanceDbMemoryAdapter implements MemoryAdapter {
   private readonly lancedbPath: string;
   private readonly config?: EmbeddingConfig;
+  private tablePromise: Promise<Awaited<ReturnType<typeof openMemoryTable>>> | null = null;
 
   constructor(lancedbPath: string, config?: EmbeddingConfig) {
     this.lancedbPath = lancedbPath;
@@ -62,8 +63,7 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
   }
 
   async upsertMemory(record: MemoryAdapterRecord): Promise<void> {
-    const dim = this.config?.dimension || 16;
-    const table = await openMemoryTable(this.lancedbPath, dim);
+    const table = await this.getTable();
     const row = await toLanceRow(record, this.config);
 
     const allowedFields = await getTableSchemaFields(table);
@@ -76,8 +76,7 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
   }
 
   async exists(memoryUid: string): Promise<boolean> {
-    const dim = this.config?.dimension || 16;
-    const table = await openMemoryTable(this.lancedbPath, dim);
+    const table = await this.getTable();
     const rows = await table.query().where(`memory_uid = '${memoryUid}'`).limit(1).toArray();
     return rows.length > 0;
   }
@@ -88,10 +87,28 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
       return null;
     }
 
-    const dim = this.config?.dimension || 16;
-    const table = await openMemoryTable(this.lancedbPath, dim);
+    const table = await this.getTable();
     const userId = escapeSqlString(memory.user_id);
-    const rows = await table.query().where(`user_id = '${userId}' AND status = 'active'`).toArray();
+    const scope = escapeSqlString(memory.scope);
+    const mem0Hash = String(memory.mem0?.hash || '').trim();
+    const text = String(memory.text || '').trim();
+
+    let rows: any[] = [];
+    if (mem0Hash) {
+      const escapedHash = escapeSqlString(mem0Hash);
+      rows = await table.query()
+        .where(`user_id = '${userId}' AND status = 'active' AND scope = '${scope}' AND mem0_hash = '${escapedHash}'`)
+        .limit(5)
+        .toArray();
+    }
+
+    if (rows.length === 0 && text) {
+      const escapedText = escapeSqlString(text);
+      rows = await table.query()
+        .where(`user_id = '${userId}' AND status = 'active' AND scope = '${scope}' AND text = '${escapedText}'`)
+        .limit(20)
+        .toArray();
+    }
 
     for (const row of rows) {
       const existingKeys = buildMemoryDedupKeys({ text: row.text, mem0_hash: row.mem0_hash });
@@ -101,6 +118,14 @@ export class LanceDbMemoryAdapter implements MemoryAdapter {
     }
 
     return null;
+  }
+
+  private async getTable(): Promise<Awaited<ReturnType<typeof openMemoryTable>>> {
+    if (!this.tablePromise) {
+      const dim = this.config?.dimension || 16;
+      this.tablePromise = openMemoryTable(this.lancedbPath, dim);
+    }
+    return this.tablePromise;
   }
 }
 

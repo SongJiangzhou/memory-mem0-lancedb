@@ -14,6 +14,14 @@ export function sanitizeMemoryText(text: string): { cleanText: string; isRestric
       break;
     }
   }
-  
-  return { cleanText: text, isRestricted };
+
+  let cleanText = String(text || '');
+  cleanText = cleanText
+    .replace(/ignore all previous instructions/ig, '[REDACTED_INSTRUCTION]')
+    .replace(/system prompt/ig, '[REDACTED_SYSTEM_PROMPT]')
+    .replace(/(api[-\s_]?key\s*(?:is|=|:)?\s*)([^\s,;]+)/ig, '$1[REDACTED]')
+    .replace(/(password\s*(?:is|=|:)?\s*)([^\s,;]+)/ig, '$1[REDACTED]')
+    .replace(/(secret\s*(?:is|=|:)?\s*)([^\s,;]+)/ig, '$1[REDACTED]');
+
+  return { cleanText, isRestricted };
 }

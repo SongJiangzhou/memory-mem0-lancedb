@@ -63,3 +63,43 @@ test('getTableSchemaFields returns the supported field names', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('openMemoryTable creates an FTS index that can answer text search', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ldb-table-fts-'));
+  try {
+    const tbl = await openMemoryTable(dir);
+    await tbl.add([{
+      memory_uid: 'fts-1',
+      user_id: 'user-1',
+      run_id: '',
+      scope: 'long-term',
+      text: 'User prefers grilled chicken burgers',
+      categories: ['preference'],
+      tags: [],
+      memory_type: 'preference',
+      domains: ['food'],
+      source_kind: 'user_explicit',
+      confidence: 0.9,
+      ts_event: new Date().toISOString(),
+      source: 'openclaw',
+      status: 'active',
+      sensitivity: 'internal',
+      openclaw_refs: '{}',
+      mem0_id: '',
+      mem0_event_id: '',
+      mem0_hash: '',
+      lancedb_row_key: 'fts-1',
+      vector: new Array<number>(16).fill(0.1),
+    }]);
+
+    const rows = await (tbl as any)
+      .search('grilled chicken', 'fts', 'text')
+      .where(`user_id = 'user-1' AND status = 'active'`)
+      .limit(5)
+      .toArray();
+
+    assert.ok(rows.some((row: any) => row.memory_uid === 'fts-1'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
