@@ -167,12 +167,16 @@ serialTest('resolve prompt helpers fall back to current values for blank input',
   const installer = await import(INSTALLER_PATH);
   const textFallback = installer.resolveTextPromptValue('', '8');
   const textValue = installer.resolveTextPromptValue('16', '8');
-  const numericFallback = installer.resolveNumericPromptValue(Number.NaN, '8');
-  const numericValue = installer.resolveNumericPromptValue(16, '8');
+  const numericFallback = installer.resolveNumericPromptValue('', '8');
+  const numericWhitespaceFallback = installer.resolveNumericPromptValue('   ', '1400');
+  const numericNaNFallback = installer.resolveNumericPromptValue(Number.NaN, '8');
+  const numericValue = installer.resolveNumericPromptValue('16', '8');
 
   assert.equal(textFallback, '8');
   assert.equal(textValue, '16');
   assert.equal(numericFallback, 8);
+  assert.equal(numericWhitespaceFallback, 1400);
+  assert.equal(numericNaNFallback, 8);
   assert.equal(numericValue, 16);
 });
 

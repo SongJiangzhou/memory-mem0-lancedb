@@ -266,6 +266,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     const currentLocalUrl = existingMem0.mode === 'local' ? existingMem0.baseUrl || 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000';
     const value = await text({
       message: withDefaultHint(strings.mem0LocalUrl, 'http://127.0.0.1:8000', strings),
+      defaultValue: currentLocalUrl,
       placeholder: currentLocalUrl,
     });
     if (isCancel(value)) process.exit(1);
@@ -275,6 +276,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     const currentApiKey = existingMem0.mode === 'remote' ? existingMem0.apiKey || '' : '';
     const value = await text({
       message: withDefaultHint(strings.mem0ApiKey, '', strings),
+      defaultValue: currentApiKey,
       placeholder: currentApiKey,
     });
     if (isCancel(value)) process.exit(1);
@@ -288,19 +290,21 @@ export async function promptForConfig(strings, existingConfig = {}) {
   if (isCancel(autoRecallEnabled)) process.exit(1);
   const currentTopK = String(existingAutoRecall.topK ?? 8);
   const autoRecallTopK = autoRecallEnabled
-    ? Number(await text({
+    ? await text({
       message: withDefaultHint(strings.autoRecallTopK, '8', strings),
-      placeholder: currentTopK,
-    }))
-    : Number(currentTopK);
+      defaultValue: currentTopK,
+      placeholder: '8',
+    })
+    : currentTopK;
   const resolvedAutoRecallTopK = autoRecallEnabled ? resolveNumericPromptValue(autoRecallTopK, currentTopK) : Number(currentTopK);
   const currentMaxChars = String(existingAutoRecall.maxChars ?? 1400);
   const autoRecallMaxChars = autoRecallEnabled
-    ? Number(await text({
+    ? await text({
       message: withDefaultHint(strings.autoRecallMaxChars, '1400', strings),
-      placeholder: currentMaxChars,
-    }))
-    : Number(currentMaxChars);
+      defaultValue: currentMaxChars,
+      placeholder: '1400',
+    })
+    : currentMaxChars;
   const resolvedAutoRecallMaxChars = autoRecallEnabled ? resolveNumericPromptValue(autoRecallMaxChars, currentMaxChars) : Number(currentMaxChars);
   let autoRecallScope = existingAutoRecall.scope || 'all';
   let autoRecallRerankerProvider = existingReranker.provider || 'local';
@@ -333,6 +337,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
       const currentRerankerBaseUrl = autoRecallRerankerBaseUrl;
       const baseUrl = await text({
         message: withDefaultHint(strings.autoRecallRerankerBaseUrl, 'https://api.voyageai.com/v1', strings),
+        defaultValue: currentRerankerBaseUrl,
         placeholder: currentRerankerBaseUrl,
       });
       if (isCancel(baseUrl)) process.exit(1);
@@ -341,6 +346,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
       const currentRerankerApiKey = autoRecallRerankerApiKey;
       const apiKey = await text({
         message: withDefaultHint(strings.autoRecallRerankerApiKey, '', strings),
+        defaultValue: currentRerankerApiKey,
         placeholder: currentRerankerApiKey,
       });
       if (isCancel(apiKey)) process.exit(1);
@@ -349,7 +355,8 @@ export async function promptForConfig(strings, existingConfig = {}) {
       const currentRerankerModel = autoRecallRerankerModel;
       const model = await text({
         message: withDefaultHint(strings.autoRecallRerankerModel, 'rerank-2.5-lite', strings),
-        placeholder: currentRerankerModel,
+        defaultValue: currentRerankerModel,
+        placeholder: 'rerank-2.5-lite',
       });
       if (isCancel(model)) process.exit(1);
       autoRecallRerankerModel = resolveTextPromptValue(model, currentRerankerModel);
@@ -380,10 +387,11 @@ export async function promptForConfig(strings, existingConfig = {}) {
     });
     if (isCancel(autoCaptureRequireReply)) process.exit(1);
     const currentAutoCaptureMaxChars = String(autoCaptureMaxChars);
-    autoCaptureMaxChars = resolveNumericPromptValue(Number(await text({
+    autoCaptureMaxChars = resolveNumericPromptValue(await text({
       message: withDefaultHint(strings.autoCaptureMaxChars, '2000', strings),
-      placeholder: currentAutoCaptureMaxChars,
-    })), currentAutoCaptureMaxChars);
+      defaultValue: currentAutoCaptureMaxChars,
+      placeholder: '2000',
+    }), currentAutoCaptureMaxChars);
   }
 
   const debugChoice = await select({
@@ -402,6 +410,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     const currentDebugLogDir = existingDebug.logDir || '~/.openclaw/workspace/logs/openclaw-mem0-lancedb';
     const value = await text({
       message: withDefaultHint(strings.debugLogDir, '~/.openclaw/workspace/logs/openclaw-mem0-lancedb', strings),
+      defaultValue: currentDebugLogDir,
       placeholder: currentDebugLogDir,
     });
     if (isCancel(value)) process.exit(1);
@@ -456,7 +465,13 @@ export function resolveTextPromptValue(value, fallback) {
 }
 
 export function resolveNumericPromptValue(value, fallback) {
-  return Number.isFinite(value) ? value : Number(fallback);
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return Number(fallback);
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number(fallback);
 }
 
 function isChineseStrings(strings) {
