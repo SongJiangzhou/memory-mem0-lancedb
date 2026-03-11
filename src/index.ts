@@ -16,8 +16,7 @@ import { createRecallReranker } from './recall/reranker';
 import { Mem0Poller } from './bridge/poller';
 import { EmbeddingMigrationWorker } from './hot/migration-worker';
 import { MemoryConsolidationWorker } from './hot/consolidation-worker';
-import { MemoryReviewWorker } from './hot/review-worker';
-import { MemoryEvictionWorker } from './hot/eviction-worker';
+import { MemoryLifecycleWorker } from './hot/lifecycle-worker';
 import { reinforceRecalledMemories } from './hot/reinforcement';
 import { PluginDebugLogger, summarizeText } from './debug/logger';
 import { isLocalMem0BaseUrl } from './control/auth';
@@ -195,7 +194,7 @@ export default function register(api: OpenClawApi) {
     );
     consolidationWorker.start();
     debug.basic('plugin.consolidation_worker_started', {});
-    const reviewWorker = new MemoryReviewWorker(
+    const lifecycleWorker = new MemoryLifecycleWorker(
       {
         auditStore,
         adapter,
@@ -204,19 +203,8 @@ export default function register(api: OpenClawApi) {
       },
       debug,
     );
-    reviewWorker.start();
-    debug.basic('plugin.review_worker_started', {});
-    const evictionWorker = new MemoryEvictionWorker(
-      {
-        auditStore,
-        adapter,
-        intervalMs: cfg.memoryConsolidation?.intervalMs || 6 * 60 * 60 * 1000,
-        batchSize: cfg.memoryConsolidation?.batchSize || 50,
-      },
-      debug,
-    );
-    evictionWorker.start();
-    debug.basic('plugin.eviction_worker_started', {});
+    lifecycleWorker.start();
+    debug.basic('plugin.lifecycle_worker_started', {});
   }
 
   // memory slot 主工具：完全走新机制（不再桥接 memory-core）

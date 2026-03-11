@@ -261,9 +261,9 @@ Expected:
 ### Task 6: Add Review Worker
 
 **Files:**
-- Create: `src/hot/review-worker.ts`
+- Create: `src/hot/lifecycle-worker.ts`
 - Modify: `src/index.ts`
-- Test: `tests/hot/review-worker.test.ts`
+- Test: `tests/hot/lifecycle-worker.test.ts`
 
 **Step 1: Scan latest audit state per memory**
 
@@ -290,7 +290,7 @@ Implementation details:
 Run:
 ```bash
 npm run build
-node --test dist/tests/hot/review-worker.test.js
+node --test dist/tests/hot/lifecycle-worker.test.js
 ```
 
 Expected:
@@ -300,9 +300,9 @@ Expected:
 ### Task 7: Add Eviction Worker
 
 **Files:**
-- Create: `src/hot/eviction-worker.ts`
+- Integrated into: `src/hot/lifecycle-worker.ts`
 - Modify: `src/index.ts`
-- Test: `tests/hot/eviction-worker.test.ts`
+- Test: `tests/hot/lifecycle-worker.test.ts`
 
 **Step 1: Evaluate latest audit state per memory**
 
@@ -328,7 +328,7 @@ Implementation details:
 Run:
 ```bash
 npm run build
-node --test dist/tests/hot/eviction-worker.test.js
+node --test dist/tests/hot/lifecycle-worker.test.js
 ```
 
 Expected:
@@ -406,7 +406,7 @@ Suggested split:
 git add src/db/schema.ts src/types.ts src/db/table.ts src/memory/lifecycle.ts tests/memory/lifecycle.test.ts tests/db/table.test.ts
 git commit -m "feat(memory): add lifecycle schema and defaults"
 
-git add src/hot/search.ts src/recall/auto.ts src/hot/reinforcement.ts src/hot/review-worker.ts src/hot/eviction-worker.ts src/hot/consolidation-worker.ts src/index.ts tests/hot/search.test.ts tests/hot/reinforcement.test.ts tests/hot/review-worker.test.ts tests/hot/eviction-worker.test.ts
+git add src/hot/search.ts src/recall/auto.ts src/hot/reinforcement.ts src/hot/lifecycle-worker.ts src/hot/consolidation-worker.ts src/index.ts tests/hot/search.test.ts tests/hot/reinforcement.test.ts tests/hot/lifecycle-worker.test.ts
 git commit -m "feat(memory): add lifecycle maintenance workers"
 
 git add src/bridge/adapter.ts src/bridge/poller.ts src/bridge/sync-engine.ts src/capture/sync.ts src/tools/store.ts src/hot/migration-worker.ts docs/plans/2026-03-11-memory-lifecycle-implementation.md

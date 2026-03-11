@@ -3,25 +3,27 @@ import type { MemoryAdapter } from '../bridge/adapter';
 import {
   backfillLifecycleFields,
   deleteLifecycle,
-  inhibitionExpired,
   inhibitLifecycle,
+  inhibitionExpired,
   quarantineLifecycle,
+  refreshReviewLifecycle,
   restoreLifecycle,
   shouldDeleteForRetention,
   shouldInhibitLifecycle,
   shouldQuarantineLifecycle,
+  shouldReviewLifecycle,
 } from '../memory/lifecycle';
 import type { MemoryRecord, MemorySyncPayload } from '../types';
 import type { PluginDebugLogger } from '../debug/logger';
 
-type EvictionWorkerDeps = {
+type LifecycleWorkerDeps = {
   auditStore: FileAuditStore;
   adapter: MemoryAdapter;
   intervalMs: number;
   batchSize: number;
 };
 
-export class MemoryEvictionWorker {
+export class MemoryLifecycleWorker {
   private readonly auditStore: FileAuditStore;
   private readonly adapter: MemoryAdapter;
   private readonly intervalMs: number;
@@ -29,7 +31,7 @@ export class MemoryEvictionWorker {
   private readonly debug?: PluginDebugLogger;
   private timer: NodeJS.Timeout | null = null;
 
-  constructor(deps: EvictionWorkerDeps, debug?: PluginDebugLogger) {
+  constructor(deps: LifecycleWorkerDeps, debug?: PluginDebugLogger) {
     this.auditStore = deps.auditStore;
     this.adapter = deps.adapter;
     this.intervalMs = deps.intervalMs;
@@ -54,8 +56,9 @@ export class MemoryEvictionWorker {
     }
   }
 
-  async runOnce(nowIso: string = new Date().toISOString()): Promise<{ scanned: number; inhibited: number; quarantined: number; deleted: number; restored: number }> {
+  async runOnce(nowIso: string = new Date().toISOString()): Promise<LifecycleRunResult> {
     const latestRows = await readLatestRows(this.auditStore);
+    let reviewed = 0;
     let inhibited = 0;
     let quarantined = 0;
     let deleted = 0;
@@ -68,9 +71,17 @@ export class MemoryEvictionWorker {
       }
 
       let updated: MemoryRecord | null = null;
-      let event: 'deleted' | 'quarantined' | 'inhibited' | 'restored' | null = null;
+      let event: LifecycleEvent | null = null;
 
-      if (shouldDeleteForRetention(row, nowIso)) {
+      if (shouldReviewLifecycle(row, nowIso)) {
+        updated = refreshReviewLifecycle(row, nowIso);
+        event = 'reviewed';
+        reviewed += 1;
+      } else if (inhibitionExpired(row, nowIso)) {
+        updated = restoreLifecycle(row, nowIso);
+        event = 'restored';
+        restored += 1;
+      } else if (shouldDeleteForRetention(row, nowIso)) {
         updated = deleteLifecycle(row, nowIso);
         event = 'deleted';
         deleted += 1;
@@ -78,10 +89,6 @@ export class MemoryEvictionWorker {
         updated = quarantineLifecycle(row, nowIso);
         event = 'quarantined';
         quarantined += 1;
-      } else if (inhibitionExpired(row, nowIso)) {
-        updated = restoreLifecycle(row, nowIso);
-        event = 'restored';
-        restored += 1;
       } else if (shouldInhibitLifecycle(row, nowIso)) {
         updated = inhibitLifecycle(row, nowIso);
         event = 'inhibited';
@@ -98,19 +105,32 @@ export class MemoryEvictionWorker {
         memory: toPayload(updated),
       });
       processed += 1;
-      this.debug?.verbose(`memory_eviction.${event}`, { memoryUid: updated.memory_uid });
+      this.debug?.verbose(`memory_lifecycle.${event}`, { memoryUid: updated.memory_uid });
     }
 
-    this.debug?.basic('memory_eviction.done', {
+    const summary = {
       scanned: latestRows.length,
+      reviewed,
       inhibited,
       quarantined,
       deleted,
       restored,
-    });
-    return { scanned: latestRows.length, inhibited, quarantined, deleted, restored };
+    };
+    this.debug?.basic('memory_lifecycle.done', summary);
+    return summary;
   }
 }
+
+type LifecycleEvent = 'reviewed' | 'inhibited' | 'quarantined' | 'deleted' | 'restored';
+
+type LifecycleRunResult = {
+  scanned: number;
+  reviewed: number;
+  inhibited: number;
+  quarantined: number;
+  deleted: number;
+  restored: number;
+};
 
 async function readLatestRows(auditStore: FileAuditStore): Promise<MemoryRecord[]> {
   const rows = await auditStore.readAll();

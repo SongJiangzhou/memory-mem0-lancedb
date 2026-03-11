@@ -6,14 +6,70 @@ import { join } from 'node:path';
 
 import { FileAuditStore } from '../../src/audit/store';
 import { InMemoryMemoryAdapter } from '../../src/bridge/adapter';
-import { MemoryEvictionWorker } from '../../src/hot/eviction-worker';
+import { MemoryLifecycleWorker } from '../../src/hot/lifecycle-worker';
 
-test('eviction worker deletes expired memories, quarantines stale inferred memories, and inhibits low-utility memories', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'eviction-worker-'));
+test('lifecycle worker reinforces reviewable memories', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lifecycle-worker-review-'));
   try {
     const auditStore = new FileAuditStore(join(dir, 'audit.jsonl'));
     const adapter = new InMemoryMemoryAdapter();
-    const worker = new MemoryEvictionWorker({
+    const worker = new MemoryLifecycleWorker({
+      auditStore,
+      adapter,
+      intervalMs: 60_000,
+      batchSize: 10,
+    });
+
+    await auditStore.append({
+      memory_uid: 'review-1',
+      user_id: 'user-1',
+      run_id: null,
+      scope: 'long-term',
+      text: 'User prefers sparkling water over soda.',
+      categories: ['preference'],
+      tags: [],
+      memory_type: 'preference',
+      domains: ['food'],
+      source_kind: 'user_explicit',
+      confidence: 0.8,
+      ts_event: '2026-01-01T00:00:00.000Z',
+      source: 'openclaw',
+      status: 'active',
+      lifecycle_state: 'active',
+      strength: 0.8,
+      stability: 30,
+      last_access_ts: '2026-01-01T00:00:00.000Z',
+      next_review_ts: '2026-02-01T00:00:00.000Z',
+      access_count: 3,
+      inhibition_weight: 0,
+      inhibition_until: '',
+      utility_score: 0.8,
+      risk_score: 0.2,
+      retention_deadline: '2027-01-01T00:00:00.000Z',
+      sensitivity: 'internal',
+      openclaw_refs: {},
+      mem0: {},
+    });
+
+    const result = await worker.runOnce('2026-03-11T00:00:00.000Z');
+    assert.equal(result.reviewed, 1);
+
+    const rows = await auditStore.readAll();
+    const latest = rows.at(-1)!;
+    assert.equal(latest.lifecycle_state, 'reinforced');
+    assert.equal((latest.stability || 0) > 30, true);
+    assert.equal(latest.next_review_ts! > '2026-03-11T00:00:00.000Z', true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('lifecycle worker deletes expired memories, quarantines stale inferred memories, and inhibits low-utility memories', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lifecycle-worker-evict-'));
+  try {
+    const auditStore = new FileAuditStore(join(dir, 'audit.jsonl'));
+    const adapter = new InMemoryMemoryAdapter();
+    const worker = new MemoryLifecycleWorker({
       auditStore,
       adapter,
       intervalMs: 60_000,
