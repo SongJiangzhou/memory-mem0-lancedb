@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -64,11 +64,13 @@ test('debug logger redacts api keys and truncates text previews in debug mode', 
   assert.match(messages[0] || '', /text_preview/);
 });
 
-test('debug logger ignores legacy logDir fields and does not write files', async () => {
+test('debug logger writes dated log files in the fixed workspace log directory', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'debug-logger-'));
+  const previousHome = process.env.HOME;
+  process.env.HOME = dir;
 
   try {
-    const logger = new PluginDebugLogger({ mode: 'debug', logDir: dir } as any);
+    const logger = new PluginDebugLogger({ mode: 'debug' });
     logger.basic('auto_capture.submitted', { eventId: 'evt-1', userId: 'user-1' });
 
     const date = new Intl.DateTimeFormat('sv-SE', {
@@ -76,8 +78,11 @@ test('debug logger ignores legacy logDir fields and does not write files', async
       month: '2-digit',
       day: '2-digit',
     }).format(new Date());
-    assert.equal(existsSync(join(dir, `${date}.log`)), false);
+    const file = join(dir, '.openclaw', 'workspace', 'logs', 'openclaw-mem0-lancedb', `${date}.log`);
+    assert.equal(existsSync(file), true);
+    assert.match(readFileSync(file, 'utf8'), /auto_capture\.submitted/);
   } finally {
+    process.env.HOME = previousHome;
     rmSync(dir, { recursive: true, force: true });
   }
 });

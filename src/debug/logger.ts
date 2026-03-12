@@ -1,3 +1,7 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import type { DebugConfig } from '../types';
 
 export interface PluginLoggerSink {
@@ -18,6 +22,12 @@ const LOCAL_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
   fractionalSecondDigits: 3,
   hour12: false,
 });
+const LOCAL_DATE_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 export class PluginDebugLogger {
   private readonly config: DebugConfig;
   private readonly sink?: PluginLoggerSink;
@@ -63,6 +73,21 @@ export class PluginDebugLogger {
     try {
       const logFn = this.sink?.[level] || console[level];
       logFn?.(line);
+    } catch {
+      // Never let debug logging break the caller.
+    }
+
+    if (this.config.mode === 'debug') {
+      this.appendToDebugFile(line);
+    }
+  }
+
+  private appendToDebugFile(line: string): void {
+    try {
+      const dir = path.join(os.homedir(), '.openclaw', 'workspace', 'logs', 'openclaw-mem0-lancedb');
+      mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${LOCAL_DATE_FORMATTER.format(new Date())}.log`);
+      appendFileSync(file, `${line}\n`, 'utf8');
     } catch {
       // Never let debug logging break the caller.
     }
