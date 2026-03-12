@@ -332,8 +332,6 @@ export async function promptForConfig(strings, existingConfig = {}) {
     initialValue: existingAutoCapture.enabled ?? true,
   });
   if (isCancel(autoCaptureEnabled)) process.exit(1);
-  let autoCaptureRequireReply = existingAutoCapture.requireAssistantReply ?? true;
-  let autoCaptureMaxChars = Number(existingAutoCapture.maxCharsPerMessage ?? 2000);
   if (autoCaptureEnabled) {
     mem0Mode = await select({
       message: withDefaultHint(strings.mem0Mode, strings.choices.mem0Local, strings),
@@ -423,18 +421,6 @@ export async function promptForConfig(strings, existingConfig = {}) {
       mem0BaseUrl = '';
       mem0ApiKey = '';
     }
-
-    autoCaptureRequireReply = await confirm({
-      message: withDefaultHint(strings.autoCaptureRequireReply, 'true', strings),
-      initialValue: autoCaptureRequireReply,
-    });
-    if (isCancel(autoCaptureRequireReply)) process.exit(1);
-    const currentAutoCaptureMaxChars = String(autoCaptureMaxChars);
-    autoCaptureMaxChars = resolveNumericPromptValue(await text({
-      message: withDefaultHint(strings.autoCaptureMaxChars, '2000', strings),
-      defaultValue: currentAutoCaptureMaxChars,
-      placeholder: '2000',
-    }), currentAutoCaptureMaxChars);
   } else {
     mem0Mode = 'disabled';
     mem0BaseUrl = '';
@@ -484,8 +470,8 @@ export async function promptForConfig(strings, existingConfig = {}) {
     autoCapture: {
       enabled: autoCaptureEnabled,
       scope: 'session',
-      requireAssistantReply: autoCaptureRequireReply,
-      maxCharsPerMessage: autoCaptureMaxChars,
+      requireAssistantReply: true,
+      maxCharsPerMessage: 2000,
     },
   };
 }
