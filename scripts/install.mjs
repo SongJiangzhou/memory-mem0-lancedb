@@ -12,6 +12,7 @@ const PLUGIN_NAME = 'openclaw-mem0-lancedb';
 const ROOT_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OPENCLAW_PLUGINS_DIR = path.join(os.homedir(), '.openclaw', 'extensions');
 const OPENCLAW_CONFIG = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+const DEFAULT_DEBUG_LOG_DIR = path.join(os.homedir(), '.openclaw', 'workspace', 'logs', PLUGIN_NAME);
 
 const STRINGS = {
   en: {
@@ -35,7 +36,6 @@ const STRINGS = {
     autoRecallRerankerApiKey: 'Voyage reranker API key',
     autoRecallRerankerModel: 'Voyage reranker model',
     autoCapture: 'Enable auto capture?',
-    autoCaptureScope: 'Capture scope',
     autoCaptureRequireReply: 'Require assistant reply before capture?',
     autoCaptureMaxChars: 'Max chars per captured message',
     debugMode: 'Debug mode',
@@ -55,8 +55,6 @@ const STRINGS = {
       rerankerLocal: 'local (built-in lightweight reranker)',
       rerankerVoyage: 'voyage (VoyageAI API)',
       rerankerNone: 'none (keep merged recall order)',
-      captureLongTerm: 'long-term (persistent)',
-      captureSession: 'session (ephemeral)',
       debug: 'debug',
       debugOff: 'off (recommended)',
     },
@@ -82,7 +80,6 @@ const STRINGS = {
     autoRecallRerankerApiKey: 'Voyage 精排 API Key',
     autoRecallRerankerModel: 'Voyage 精排模型',
     autoCapture: '是否启用自动提取？',
-    autoCaptureScope: '保存范围',
     autoCaptureRequireReply: '是否要求必须在模型回复后才触发提取？',
     autoCaptureMaxChars: '提取单条消息的截断限制(字符)',
     debugMode: '调试模式',
@@ -102,8 +99,6 @@ const STRINGS = {
       rerankerLocal: 'local (内置轻量精排)',
       rerankerVoyage: 'voyage (VoyageAI API)',
       rerankerNone: 'none (保持召回合并顺序)',
-      captureLongTerm: 'long-term (持久化的长期记忆)',
-      captureSession: 'session (临时会话记忆)',
       debug: 'debug',
       debugOff: 'off（推荐）',
     },
@@ -243,7 +238,9 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
     auditStorePath: path.join(memoryRoot, 'audit', 'memory_records.jsonl'),
     debug: {
       mode: existingDebug.mode || 'off',
-      ...(existingDebug.logDir ? { logDir: existingDebug.logDir } : {}),
+      ...((existingDebug.logDir || existingDebug.mode === 'debug')
+        ? { logDir: existingDebug.logDir || DEFAULT_DEBUG_LOG_DIR }
+        : {}),
     },
     autoRecall: {
       enabled: true,
@@ -259,7 +256,7 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
     },
     autoCapture: {
       enabled: autoCaptureEnabled,
-      scope: existingAutoCapture.scope || 'long-term',
+      scope: existingAutoCapture.scope || 'session',
       requireAssistantReply: existingAutoCapture.requireAssistantReply ?? true,
       maxCharsPerMessage: existingAutoCapture.maxCharsPerMessage || 2000,
     },
@@ -367,7 +364,6 @@ export async function promptForConfig(strings, existingConfig = {}) {
     initialValue: existingAutoCapture.enabled ?? true,
   });
   if (isCancel(autoCaptureEnabled)) process.exit(1);
-  let autoCaptureScope = existingAutoCapture.scope || 'long-term';
   let autoCaptureRequireReply = existingAutoCapture.requireAssistantReply ?? true;
   let autoCaptureMaxChars = Number(existingAutoCapture.maxCharsPerMessage ?? 2000);
   if (autoCaptureEnabled) {
@@ -460,15 +456,6 @@ export async function promptForConfig(strings, existingConfig = {}) {
       mem0ApiKey = '';
     }
 
-    autoCaptureScope = await select({
-      message: withDefaultHint(strings.autoCaptureScope, strings.choices.captureLongTerm, strings),
-      options: [
-        { value: 'long-term', label: strings.choices.captureLongTerm },
-        { value: 'session', label: strings.choices.captureSession },
-      ],
-      initialValue: autoCaptureScope,
-    });
-    if (isCancel(autoCaptureScope)) process.exit(1);
     autoCaptureRequireReply = await confirm({
       message: withDefaultHint(strings.autoCaptureRequireReply, 'true', strings),
       initialValue: autoCaptureRequireReply,
@@ -495,7 +482,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     initialValue: existingDebug.mode || 'off',
   });
   if (isCancel(debugChoice)) process.exit(1);
-  let debugLogDir = existingDebug.logDir;
+  const debugLogDir = existingDebug.logDir || (debugChoice === 'debug' ? DEFAULT_DEBUG_LOG_DIR : undefined);
 
   return {
     lancedbPath: path.join(memoryRoot, 'lancedb'),
@@ -530,7 +517,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     },
     autoCapture: {
       enabled: autoCaptureEnabled,
-      scope: autoCaptureScope,
+      scope: 'session',
       requireAssistantReply: autoCaptureRequireReply,
       maxCharsPerMessage: autoCaptureMaxChars,
     },

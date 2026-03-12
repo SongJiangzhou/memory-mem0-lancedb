@@ -2,6 +2,8 @@ import type { LifecycleState, MemoryRecord, MemorySyncPayload } from '../types';
 
 const DEFAULT_STRENGTH = 0.6;
 const DEFAULT_STABILITY_DAYS = 30;
+const DEFAULT_SESSION_STRENGTH = 0.35;
+const DEFAULT_SESSION_STABILITY_DAYS = 1;
 const DEFAULT_UTILITY = 0.5;
 const RETENTION_DAY_BY_SENSITIVITY: Record<string, number> = {
   restricted: 30,
@@ -31,12 +33,14 @@ export function initializeLifecycleFields(input: {
   sensitivity?: 'public' | 'internal' | 'confidential' | 'restricted';
 }): MemoryLifecycleFields {
   const tsEvent = input.tsEvent || new Date().toISOString();
+  const stabilityDays = input.scope === 'session' ? DEFAULT_SESSION_STABILITY_DAYS : DEFAULT_STABILITY_DAYS;
+  const strength = input.scope === 'session' ? DEFAULT_SESSION_STRENGTH : DEFAULT_STRENGTH;
   return {
     lifecycle_state: mapStatusToLifecycleState(input.status),
-    strength: DEFAULT_STRENGTH,
-    stability: DEFAULT_STABILITY_DAYS,
+    strength,
+    stability: stabilityDays,
     last_access_ts: tsEvent,
-    next_review_ts: addDays(tsEvent, DEFAULT_STABILITY_DAYS),
+    next_review_ts: addDays(tsEvent, stabilityDays),
     access_count: 0,
     inhibition_weight: 0,
     inhibition_until: '',
@@ -209,6 +213,9 @@ export function shouldDeleteForRetention(row: Partial<MemoryRecord>, nowIso: str
 
 export function shouldQuarantineLifecycle(row: Partial<MemoryRecord>, nowIso: string = new Date().toISOString()): boolean {
   const existing = backfillLifecycleFields(row);
+  if (shouldQuarantineSessionLifecycle(existing, nowIso)) {
+    return true;
+  }
   const tsEvent = String(existing.ts_event || nowIso);
   const ageDays = Math.max(0, (new Date(nowIso).getTime() - new Date(tsEvent).getTime()) / (1000 * 60 * 60 * 24));
   return existing.status === 'active'
@@ -218,6 +225,19 @@ export function shouldQuarantineLifecycle(row: Partial<MemoryRecord>, nowIso: st
     && existing.utility_score < 0.35
     && existing.strength < 0.5
     && ageDays >= 30;
+}
+
+export function shouldQuarantineSessionLifecycle(row: Partial<MemoryRecord>, nowIso: string = new Date().toISOString()): boolean {
+  const existing = backfillLifecycleFields(row);
+  if (existing.scope !== 'session' || existing.status !== 'active') {
+    return false;
+  }
+  if (existing.lifecycle_state === 'quarantined' || existing.lifecycle_state === 'deleted' || existing.lifecycle_state === 'superseded') {
+    return false;
+  }
+  const lastAccess = new Date(existing.last_access_ts || existing.ts_event || nowIso).getTime();
+  const ageHours = Math.max(0, (new Date(nowIso).getTime() - lastAccess) / (1000 * 60 * 60));
+  return ageHours >= 24;
 }
 
 export function shouldInhibitLifecycle(row: Partial<MemoryRecord>, nowIso: string = new Date().toISOString()): boolean {

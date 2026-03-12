@@ -17,6 +17,7 @@ import { Mem0Poller } from './bridge/poller';
 import { EmbeddingMigrationWorker } from './hot/migration-worker';
 import { MemoryConsolidationWorker } from './hot/consolidation-worker';
 import { MemoryLifecycleWorker } from './hot/lifecycle-worker';
+import { MemoryPromotionWorker } from './hot/promotion-worker';
 import { reinforceRecalledMemories } from './hot/reinforcement';
 import { PluginDebugLogger, summarizeText } from './debug/logger';
 import { isLocalMem0BaseUrl } from './control/auth';
@@ -53,9 +54,12 @@ const PLUGIN_VERSION = readPluginVersion();
 let localMem0StartupPromise: Promise<{ started: boolean; healthy: boolean }> | null = null;
 const LOCAL_MEM0_STARTUP_POLL_INTERVAL_MS = 300;
 const LOCAL_MEM0_STARTUP_MAX_ATTEMPTS = 30;
+const DEFAULT_DEBUG_LOG_DIR = '~/.openclaw/workspace/logs/openclaw-mem0-lancedb';
 
 export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): PluginConfig {
   const mem0 = resolveMem0Config(raw);
+  const debugMode = raw?.debug?.mode || 'off';
+  const debugLogDir = raw?.debug?.logDir || (debugMode === 'debug' ? DEFAULT_DEBUG_LOG_DIR : undefined);
 
   return {
     lancedbPath: raw?.lancedbPath || '~/.openclaw/workspace/data/memory/lancedb',
@@ -79,7 +83,7 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
     },
     autoCapture: {
       enabled: raw?.autoCapture?.enabled ?? true,
-      scope: raw?.autoCapture?.scope || 'long-term',
+      scope: raw?.autoCapture?.scope || 'session',
       requireAssistantReply: raw?.autoCapture?.requireAssistantReply ?? true,
       maxCharsPerMessage: raw?.autoCapture?.maxCharsPerMessage || 2000,
     },
@@ -95,8 +99,8 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
       batchSize: raw?.memoryConsolidation?.batchSize || 50,
     },
     debug: {
-      mode: raw?.debug?.mode || 'off',
-      logDir: raw?.debug?.logDir || undefined,
+      mode: debugMode,
+      logDir: debugLogDir,
     },
   };
 }
@@ -221,6 +225,17 @@ export default function register(api: OpenClawApi) {
     );
     lifecycleWorker.start();
     debug.basic('plugin.lifecycle_worker_started', {});
+    const promotionWorker = new MemoryPromotionWorker(
+      {
+        auditStore,
+        adapter,
+        intervalMs: cfg.memoryConsolidation?.intervalMs || 6 * 60 * 60 * 1000,
+        batchSize: cfg.memoryConsolidation?.batchSize || 50,
+      },
+      debug,
+    );
+    promotionWorker.start();
+    debug.basic('plugin.promotion_worker_started', {});
   }
 
   // Hooks are the normal runtime path. Retained tools are operator/admin utilities.

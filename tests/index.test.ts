@@ -33,6 +33,7 @@ test('resolveConfig sets embedding migration defaults', async () => {
   assert.equal(config.autoRecall.topK, 8);
   assert.equal(config.autoRecall.maxChars, 1400);
   assert.equal(config.autoCapture.enabled, true);
+  assert.equal(config.autoCapture.scope, 'session');
 });
 
 test('resolveConfig uses the unified memory directory defaults', async () => {
@@ -222,6 +223,17 @@ test('resolveConfig sets debug defaults', async () => {
   assert.equal(config.debug?.logDir, undefined);
 });
 
+test('resolveConfig defaults debug logDir when debug mode is enabled', async () => {
+  const config = resolveConfig({
+    debug: {
+      mode: 'debug',
+    },
+  } as any);
+
+  assert.equal(config.debug?.mode, 'debug');
+  assert.equal(config.debug?.logDir, '~/.openclaw/workspace/logs/openclaw-mem0-lancedb');
+});
+
 test('resolveConfig respects debug overrides', async () => {
   const config = resolveConfig({
       debug: {
@@ -277,6 +289,24 @@ test('register exposes lifecycle hooks as the primary memory interface', async (
   assert.match(tools.find((tool) => tool.name === 'memorySearch')?.description || '', /operator|debug|admin/i);
   assert.match(tools.find((tool) => tool.name === 'memoryStore')?.description || '', /manual|operator|admin/i);
   assert.match(tools.find((tool) => tool.name === 'memory_get')?.description || '', /diagnostic|debug|admin/i);
+});
+
+test('register starts promotion worker with the plugin', async () => {
+  const messages: string[] = [];
+
+  register({
+    pluginConfig: {
+      debug: { mode: 'debug' },
+    },
+    registerTool() {},
+    logger: {
+      info(msg: string) {
+        messages.push(msg);
+      },
+    },
+  } as any);
+
+  assert.ok(messages.some((msg) => msg.includes('"event":"plugin.promotion_worker_started"')));
 });
 
 test('register does not throw when auto-recall is enabled but no hook api exists', async () => {
@@ -882,7 +912,7 @@ test('before_prompt_build clears pending capture notifications after injecting t
   }
 });
 
-test('hook-first flow captures on one turn and recalls on the next without tool calls', async () => {
+test('hook-first flow carries pending captured memory into the next turn without tool calls', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'index-hook-first-flow-'));
   const hooks: Array<{ name: string; handler: Function }> = [];
   const originalFetch = global.fetch;
@@ -897,7 +927,7 @@ test('hook-first flow captures on one turn and recalls on the next without tool 
           json: async () => ([
             {
               id: 'mem0-captured-hook-flow',
-              data: { memory: 'User prefers hook-driven memory over manual tool calls' },
+              data: { memory: 'Prefers hook-driven memory' },
               event: 'ADD',
             },
           ]),
@@ -964,8 +994,8 @@ test('hook-first flow captures on one turn and recalls on the next without tool 
     );
 
     assert.equal(toolExecutionCount, 0);
-    assert.match(String((recallResult as any)?.prependSystemContext || ''), /User prefers hook-driven memory over manual tool calls/);
-    assert.match(String((recallResult as any)?.prependSystemContext || ''), /<recall source="lancedb">/);
+    assert.match(String((recallResult as any)?.prependSystemContext || ''), /Prefers hook-driven memory/);
+    assert.match(String((recallResult as any)?.prependSystemContext || ''), /<capture via="mem0"/);
   } finally {
     global.fetch = originalFetch;
     rmSync(dir, { recursive: true, force: true });

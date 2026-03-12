@@ -183,3 +183,59 @@ test('lifecycle worker deletes expired memories, quarantines stale inferred memo
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('lifecycle worker quarantines stale session memories aggressively', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lifecycle-worker-session-'));
+  try {
+    const auditStore = new FileAuditStore(join(dir, 'audit.jsonl'));
+    const adapter = new InMemoryMemoryAdapter();
+    const worker = new MemoryLifecycleWorker({
+      auditStore,
+      adapter,
+      intervalMs: 60_000,
+      batchSize: 10,
+    });
+
+    await auditStore.append({
+      memory_uid: 'session-1',
+      user_id: 'default',
+      session_id: 'session-a',
+      agent_id: 'main',
+      run_id: null,
+      scope: 'session',
+      text: 'Temporary task context.',
+      categories: ['generic'],
+      tags: [],
+      memory_type: 'task_context',
+      domains: ['tooling'],
+      source_kind: 'system_generated',
+      confidence: 0.6,
+      ts_event: '2026-03-11T00:00:00.000Z',
+      source: 'openclaw',
+      status: 'active',
+      lifecycle_state: 'active',
+      strength: 0.4,
+      stability: 1,
+      last_access_ts: '2026-03-11T00:00:00.000Z',
+      next_review_ts: '2026-03-12T00:00:00.000Z',
+      access_count: 0,
+      inhibition_weight: 0,
+      inhibition_until: '',
+      utility_score: 0.3,
+      risk_score: 0.2,
+      retention_deadline: '2026-03-18T00:00:00.000Z',
+      sensitivity: 'internal',
+      openclaw_refs: {},
+      mem0: {},
+    });
+
+    const result = await worker.runOnce('2026-03-12T12:00:00.000Z');
+    assert.equal(result.quarantined, 1);
+
+    const rows = await auditStore.readAll();
+    const latest = rows.at(-1)!;
+    assert.equal(latest.lifecycle_state, 'quarantined');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

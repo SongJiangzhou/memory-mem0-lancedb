@@ -127,7 +127,7 @@
           "scope": {
             "type": "string",
             "enum": ["long-term", "session"],
-            "default": "long-term"
+            "default": "session"
           },
           "requireAssistantReply": {
             "type": "boolean",

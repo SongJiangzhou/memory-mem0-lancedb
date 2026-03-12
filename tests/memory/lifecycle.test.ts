@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { backfillLifecycleFields, computeRetentionDeadline, initializeLifecycleFields, mapStatusToLifecycleState } from '../../src/memory/lifecycle';
+import {
+  backfillLifecycleFields,
+  computeRetentionDeadline,
+  initializeLifecycleFields,
+  mapStatusToLifecycleState,
+  shouldQuarantineSessionLifecycle,
+} from '../../src/memory/lifecycle';
 
 test('initializeLifecycleFields sets deterministic defaults', () => {
   const result = initializeLifecycleFields({
@@ -46,6 +52,31 @@ test('retention deadline shortens for session and restricted memories', () => {
 
   assert.match(sessionDeadline, /^2026-03-18/);
   assert.match(restrictedDeadline, /^2026-04-10/);
+});
+
+test('session lifecycle defaults are shorter lived than long-term memory', () => {
+  const result = initializeLifecycleFields({
+    tsEvent: '2026-03-11T00:00:00.000Z',
+    status: 'active',
+    scope: 'session',
+    sensitivity: 'internal',
+  });
+
+  assert.equal(result.stability, 1);
+  assert.match(result.next_review_ts, /^2026-03-12/);
+});
+
+test('session memories quarantine after one day of inactivity', () => {
+  const shouldQuarantine = shouldQuarantineSessionLifecycle({
+    scope: 'session',
+    status: 'active',
+    lifecycle_state: 'active',
+    ts_event: '2026-03-11T00:00:00.000Z',
+    last_access_ts: '2026-03-11T00:00:00.000Z',
+    retention_deadline: '2026-03-18T00:00:00.000Z',
+  }, '2026-03-12T12:00:00.000Z');
+
+  assert.equal(shouldQuarantine, true);
 });
 
 test('mapStatusToLifecycleState keeps status alignment', () => {

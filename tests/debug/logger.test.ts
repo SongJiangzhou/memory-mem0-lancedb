@@ -84,3 +84,37 @@ test('debug logger mirrors structured events to a JSONL file when logDir is conf
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('debug logger writes to the resolved default plugin log file path', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'debug-default-root-'));
+  const homeDir = join(rootDir, 'home');
+  const logDir = join(homeDir, '.openclaw', 'workspace', 'logs', 'openclaw-mem0-lancedb');
+  const previousHome = process.env.HOME;
+
+  process.env.HOME = homeDir;
+
+  try {
+    const logger = new PluginDebugLogger({
+      mode: 'debug',
+      logDir: '~/.openclaw/workspace/logs/openclaw-mem0-lancedb',
+    });
+    logger.basic('plugin.register', { version: 'test-version' });
+
+    const date = new Intl.DateTimeFormat('sv-SE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const content = readFileSync(join(logDir, `${date}.log`), 'utf-8');
+
+    assert.match(content, /plugin\.register/);
+    assert.match(content, /test-version/);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -75,7 +75,7 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
   assert.equal(pluginConfig?.autoRecall?.reranker?.apiKey, '');
   assert.equal(pluginConfig?.autoRecall?.reranker?.model, 'rerank-2.5-lite');
   assert.equal(pluginConfig?.autoCapture?.enabled, true);
-  assert.equal(pluginConfig?.autoCapture?.scope, 'long-term');
+  assert.equal(pluginConfig?.autoCapture?.scope, 'session');
   assert.equal(pluginConfig?.autoCapture?.requireAssistantReply, true);
   assert.equal(pluginConfig?.autoCapture?.maxCharsPerMessage, 2000);
 });
@@ -162,6 +162,18 @@ serialTest('buildDefaultPluginConfig preserves an existing remote mem0 api key',
 });
 
 serialTest('buildDefaultPluginConfig preserves an existing debug mode override', async () => {
+  const installer = await import(INSTALLER_PATH);
+  const config = installer.buildDefaultPluginConfig({
+    debug: {
+      mode: 'debug',
+    },
+  });
+
+  assert.equal(config.debug.mode, 'debug');
+  assert.equal(config.debug.logDir, join(homedir(), '.openclaw', 'workspace', 'logs', 'openclaw-mem0-lancedb'));
+});
+
+serialTest('buildDefaultPluginConfig preserves an existing debug logDir override', async () => {
   const installer = await import(INSTALLER_PATH);
   const config = installer.buildDefaultPluginConfig({
     debug: {
