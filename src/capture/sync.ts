@@ -96,10 +96,6 @@ function shouldRejectCapturedMemory(
   memory: Mem0ExtractedMemory,
   captureContext?: { latestUserMessage?: string; latestAssistantMessage?: string },
 ): boolean {
-  if (isObviousOperationalNoise(String(memory.text || ''))) {
-    return true;
-  }
-
   const memoryText = normalizeCaptureText(memory.text);
   const latestUserMessage = normalizeCaptureText(captureContext?.latestUserMessage || '');
   const latestAssistantMessage = normalizeCaptureText(captureContext?.latestAssistantMessage || '');
@@ -113,7 +109,7 @@ function shouldRejectCapturedMemory(
   }
 
   const categories = new Set((memory.categories || []).map((item) => String(item || '').toLowerCase()));
-  const looksLikePreference = categories.has('preference') || /prefer|favorite|likes|like|喜欢|偏好|爱吃|爱喝/i.test(String(memory.text || ''));
+  const looksLikePreference = categories.has('preference');
   const assistantSimilarity = similarityScore(memoryText, latestAssistantMessage);
   const userSimilarity = similarityScore(memoryText, latestUserMessage);
   const supportedByAssistantOnly = Boolean(
@@ -130,29 +126,12 @@ function inferRejectReason(
   memory: Mem0ExtractedMemory,
   captureContext?: { latestUserMessage?: string; latestAssistantMessage?: string },
 ): string {
-  if (isObviousOperationalNoise(String(memory.text || ''))) {
-    return 'operational_noise';
-  }
-
   const memoryText = normalizeCaptureText(memory.text);
   const latestUserMessage = normalizeCaptureText(captureContext?.latestUserMessage || '');
   if (memoryText && latestUserMessage && memoryText === latestUserMessage) {
     return 'query_echo';
   }
   return 'assistant_only_preference';
-}
-
-function isObviousOperationalNoise(text: string): boolean {
-  const value = String(text || '').trim();
-  if (!value) {
-    return false;
-  }
-
-  const hasFilesystemPath = /(?:^|[\s`'"])(?:~\/|\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+|[A-Za-z]:\\(?:[^\\\s]+\\)+[^\\\s]+)(?:[\s`'"]|$)/.test(value);
-  const hasShellCommand = /\b(?:npm|pnpm|yarn|bun|node|python|pip|uv|git|curl|wget|bash|sh|chmod|mkdir|rm|cp|mv)\s+[^\n]+/.test(value);
-  const hasStackTrace = /\bat\s+[A-Za-z0-9_$.<>]+\s*\([^)]+:\d+:\d+\)|\b(?:Error|TypeError|ReferenceError|SyntaxError|ENOENT|EACCES)\b.+:\d+:\d+/i.test(value);
-
-  return hasFilesystemPath || hasShellCommand || hasStackTrace;
 }
 
 function normalizeCaptureText(value: string): string {
