@@ -82,7 +82,7 @@
           },
           "topK": {
             "type": "number",
-            "default": 8
+            "default": 5
           },
           "maxChars": {
             "type": "number",

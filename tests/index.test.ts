@@ -30,7 +30,7 @@ test('resolveConfig sets embedding migration defaults', async () => {
   assert.equal(config.memoryConsolidation?.batchSize, 50);
   assert.equal(config.mem0Mode, 'local');
   assert.equal(config.mem0BaseUrl, 'http://127.0.0.1:8000');
-  assert.equal(config.autoRecall.topK, 8);
+  assert.equal(config.autoRecall.topK, 5);
   assert.equal(config.autoRecall.maxChars, 1400);
   assert.equal(config.autoCapture.enabled, true);
   assert.equal(config.autoCapture.scope, 'session');

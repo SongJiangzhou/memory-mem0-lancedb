@@ -244,7 +244,7 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
     },
     autoRecall: {
       enabled: true,
-      topK: existingAutoRecall.topK || 8,
+      topK: existingAutoRecall.topK || 5,
       maxChars: existingAutoRecall.maxChars || 1400,
       scope: existingAutoRecall.scope || 'all',
       reranker: {
@@ -284,7 +284,7 @@ export async function promptForConfig(strings, existingConfig = {}) {
     initialValue: existingAutoRecall.enabled ?? true,
   });
   if (isCancel(autoRecallEnabled)) process.exit(1);
-  const currentTopK = String(existingAutoRecall.topK ?? 8);
+  const currentTopK = String(existingAutoRecall.topK ?? 5);
   const autoRecallTopK = autoRecallEnabled
     ? await text({
       message: withDefaultHint(strings.autoRecallTopK, '8', strings),

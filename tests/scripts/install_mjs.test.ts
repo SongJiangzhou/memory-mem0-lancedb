@@ -68,7 +68,7 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
   assert.equal(pluginConfig?.auditStorePath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'audit', 'memory_records.jsonl'));
   assert.equal(pluginConfig?.debug?.mode, 'off');
   assert.equal(pluginConfig?.autoRecall?.enabled, true);
-  assert.equal(pluginConfig?.autoRecall?.topK, 8);
+  assert.equal(pluginConfig?.autoRecall?.topK, 5);
   assert.equal(pluginConfig?.autoRecall?.maxChars, 1400);
   assert.equal(pluginConfig?.autoRecall?.reranker?.provider, 'local');
   assert.equal(pluginConfig?.autoRecall?.reranker?.baseUrl, 'https://api.voyageai.com/v1');
@@ -240,11 +240,11 @@ serialTest('resolve prompt helpers fall back to current values for blank input',
 
 serialTest('withDefaultHint appends the configured default label to prompt titles', async () => {
   const installer = await import(INSTALLER_PATH);
-  const english = installer.withDefaultHint('Max memories to inject (topK)', '8', { intro: 'installer' });
-  const chinese = installer.withDefaultHint('最大注入记忆条数 (topK)', '8', { intro: '安装器' });
+  const english = installer.withDefaultHint('Max memories to inject (topK)', '5', { intro: 'installer' });
+  const chinese = installer.withDefaultHint('最大注入记忆条数 (topK)', '5', { intro: '安装器' });
 
-  assert.match(english, /default: 8/);
-  assert.match(chinese, /默认: 8/);
+  assert.match(english, /default: 5/);
+  assert.match(chinese, /默认: 5/);
 });
 
 serialTest('install.mjs --yes keeps an existing remote mem0 api key', () => {
@@ -305,7 +305,7 @@ serialTest('install.mjs --yes keeps an existing remote mem0 api key', () => {
   assert.equal(pluginConfig?.mem0?.mode, 'remote');
   assert.equal(pluginConfig?.mem0?.baseUrl, 'https://api.mem0.ai');
   assert.equal(pluginConfig?.mem0?.apiKey, 'existing-test-key');
-  assert.equal(pluginConfig?.autoRecall?.topK, 8);
+  assert.equal(pluginConfig?.autoRecall?.topK, 5);
   assert.equal(pluginConfig?.autoRecall?.maxChars, 1400);
   assert.equal(pluginConfig?.autoRecall?.reranker?.provider, 'local');
 });

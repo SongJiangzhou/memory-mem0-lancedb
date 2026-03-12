@@ -71,7 +71,7 @@ export function resolveConfig(raw?: Partial<PluginConfig>, apiConfig?: any): Plu
     auditStorePath: raw?.auditStorePath || '~/.openclaw/workspace/data/memory/audit/memory_records.jsonl',
     autoRecall: {
       enabled: raw?.autoRecall?.enabled ?? true,
-      topK: raw?.autoRecall?.topK || 8,
+      topK: raw?.autoRecall?.topK || 5,
       maxChars: raw?.autoRecall?.maxChars || 1400,
       scope: raw?.autoRecall?.scope || 'all',
       reranker: {

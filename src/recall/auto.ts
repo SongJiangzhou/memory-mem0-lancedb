@@ -3,7 +3,7 @@ import { summarizeText, type PluginDebugLogger } from '../debug/logger';
 import { buildRecallQueryVariants } from './query-rewrite';
 import { createLocalRecallReranker, type RecallReranker } from './reranker';
 
-const RECALL_FETCH_MULTIPLIER = 4;
+const RECALL_FETCH_MULTIPLIER = 2;
 const RECALL_FETCH_MIN = 12;
 
 export function buildAutoRecallBlock(memories: SearchResult['memories'], config: AutoRecallConfig, source?: string): string {
