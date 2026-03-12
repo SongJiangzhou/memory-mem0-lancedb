@@ -66,7 +66,7 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
   assert.equal(pluginConfig?.lancedbPath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'lancedb'));
   assert.equal(pluginConfig?.outboxDbPath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'outbox.json'));
   assert.equal(pluginConfig?.auditStorePath, join(homeDir, '.openclaw', 'workspace', 'data', 'memory', 'audit', 'memory_records.jsonl'));
-  assert.equal(pluginConfig?.debug?.mode, 'debug');
+  assert.equal(pluginConfig?.debug?.mode, 'off');
   assert.equal(pluginConfig?.autoRecall?.enabled, true);
   assert.equal(pluginConfig?.autoRecall?.topK, 8);
   assert.equal(pluginConfig?.autoRecall?.maxChars, 1400);
@@ -158,6 +158,20 @@ serialTest('buildDefaultPluginConfig preserves an existing remote mem0 api key',
   assert.equal(config.autoRecall.reranker.baseUrl, 'https://custom.voyage.test/v1');
   assert.equal(config.autoRecall.reranker.apiKey, 'existing-rerank-key');
   assert.equal(config.autoRecall.reranker.model, 'rerank-2.5');
+  assert.equal(config.debug.mode, 'off');
+});
+
+serialTest('buildDefaultPluginConfig preserves an existing debug mode override', async () => {
+  const installer = await import(INSTALLER_PATH);
+  const config = installer.buildDefaultPluginConfig({
+    debug: {
+      mode: 'debug',
+      logDir: '/tmp/openclaw-debug',
+    },
+  });
+
+  assert.equal(config.debug.mode, 'debug');
+  assert.equal(config.debug.logDir, '/tmp/openclaw-debug');
 });
 
 serialTest('buildDefaultPluginConfig preserves an existing reranker api key even when provider is not voyage', async () => {

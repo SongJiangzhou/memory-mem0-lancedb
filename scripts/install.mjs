@@ -57,8 +57,8 @@ const STRINGS = {
       rerankerNone: 'none (keep merged recall order)',
       captureLongTerm: 'long-term (persistent)',
       captureSession: 'session (ephemeral)',
-      debug: 'debug (recommended)',
-      debugOff: 'off',
+      debug: 'debug',
+      debugOff: 'off (recommended)',
     },
   },
   zh: {
@@ -104,8 +104,8 @@ const STRINGS = {
       rerankerNone: 'none (保持召回合并顺序)',
       captureLongTerm: 'long-term (持久化的长期记忆)',
       captureSession: 'session (临时会话记忆)',
-      debug: 'debug（推荐）',
-      debugOff: 'off',
+      debug: 'debug',
+      debugOff: 'off（推荐）',
     },
   },
 };
@@ -242,7 +242,8 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
     outboxDbPath: path.join(memoryRoot, 'outbox.json'),
     auditStorePath: path.join(memoryRoot, 'audit', 'memory_records.jsonl'),
     debug: {
-      mode: 'debug',
+      mode: existingDebug.mode || 'off',
+      ...(existingDebug.logDir ? { logDir: existingDebug.logDir } : {}),
     },
     autoRecall: {
       enabled: true,
@@ -262,7 +263,6 @@ export function buildDefaultPluginConfig(existingConfig = {}) {
       requireAssistantReply: existingAutoCapture.requireAssistantReply ?? true,
       maxCharsPerMessage: existingAutoCapture.maxCharsPerMessage || 2000,
     },
-    ...(existingDebug.mode || existingDebug.logDir ? { debug: { mode: existingDebug.mode || 'debug', ...(existingDebug.logDir ? { logDir: existingDebug.logDir } : {}) } } : {}),
   };
 }
 
@@ -487,12 +487,12 @@ export async function promptForConfig(strings, existingConfig = {}) {
   }
 
   const debugChoice = await select({
-    message: withDefaultHint(strings.debugMode, strings.choices.debug, strings),
+    message: withDefaultHint(strings.debugMode, strings.choices.debugOff, strings),
     options: [
       { value: 'debug', label: strings.choices.debug },
       { value: 'off', label: strings.choices.debugOff },
     ],
-    initialValue: existingDebug.mode || 'debug',
+    initialValue: existingDebug.mode || 'off',
   });
   if (isCancel(debugChoice)) process.exit(1);
   let debugLogDir = existingDebug.logDir;
