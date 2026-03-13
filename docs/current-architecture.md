@@ -12,6 +12,8 @@
 
 The current implementation on `main` is simpler than some earlier designs and older research notes. In particular, it no longer relies on always-on maintenance workers or any JSONL audit layer.
 
+From a release perspective, this package should be treated as an OpenClaw plugin first. ClawHub is a distribution channel, while helper install scripts remain optional bootstrap tools rather than the primary installation contract.
+
 ## Runtime Flow
 
 The plugin entrypoint is [src/index.ts](/home/lv5railgun/.openclaw/workspace/plugins/openclaw-mem0-lancedb/src/index.ts).

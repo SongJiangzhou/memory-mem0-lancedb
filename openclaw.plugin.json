@@ -1,7 +1,7 @@
 {
   "id": "openclaw-mem0-lancedb",
   "name": "Mem0 + LanceDB Memory",
-  "description": "OpenClaw memory plugin using Mem0 as control plane and LanceDB as retrieval layer",
+  "description": "Local-first OpenClaw memory plugin using LanceDB for recall and Mem0 for extraction and sync",
   "version": "0.1.0",
   "kind": "memory",
   "entry": "dist/src/index.js",
@@ -56,10 +56,6 @@
         "type": "string",
         "default": "~/.openclaw/workspace/data/memory/outbox.json"
       },
-      "auditStorePath": {
-        "type": "string",
-        "default": "~/.openclaw/workspace/data/memory/audit/memory_records.jsonl"
-      },
       "debug": {
         "type": "object",
         "properties": {
@@ -67,9 +63,6 @@
             "type": "string",
             "enum": ["off", "debug"],
             "default": "off"
-          },
-          "logDir": {
-            "type": "string"
           }
         }
       },
@@ -124,11 +117,6 @@
             "type": "boolean",
             "default": true
           },
-          "scope": {
-            "type": "string",
-            "enum": ["long-term", "session"],
-            "default": "session"
-          },
           "requireAssistantReply": {
             "type": "boolean",
             "default": true
@@ -136,40 +124,6 @@
           "maxCharsPerMessage": {
             "type": "number",
             "default": 2000
-          }
-        }
-      },
-      "embeddingMigration": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "default": true
-          },
-          "intervalMs": {
-            "type": "number",
-            "default": 900000
-          },
-          "batchSize": {
-            "type": "number",
-            "default": 20
-          }
-        }
-      },
-      "memoryConsolidation": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "default": true
-          },
-          "intervalMs": {
-            "type": "number",
-            "default": 21600000
-          },
-          "batchSize": {
-            "type": "number",
-            "default": 50
           }
         }
       }

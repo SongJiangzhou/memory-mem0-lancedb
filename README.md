@@ -74,7 +74,9 @@ Get your agent remembering in seconds!
 
 ### 1. Installation
 
-Run the installation script in your OpenClaw workspace:
+Install this package as an OpenClaw memory plugin through your normal plugin or ClawHub flow. This repository is published as a plugin first, not as a script-driven skill.
+
+If you prefer manual bootstrap after installing or cloning the repo, the helper script is still available:
 
 ```bash
 cd plugins/openclaw-mem0-lancedb
@@ -117,6 +119,14 @@ Add the plugin to your `openclaw.json` config file. Here is the minimal recommen
 ```
 
 *Tip: Enable `autoCapture` and `autoRecall` to run the plugin in its normal hook-first mode. The agent can save and recall memories without explicit tool calls.*
+
+### 3. Choose a Mem0 mode
+
+- `local`: best default for self-hosted use. Requires a local Mem0 server at `http://127.0.0.1:8000`.
+- `remote`: use Mem0 Cloud and provide `mem0.apiKey`.
+- `disabled`: keep LanceDB-only local recall and manual memory operations, but automatic extraction and external sync become limited.
+
+The installer script is optional convenience. The plugin should remain understandable and configurable from `openclaw.plugin.json` and `openclaw.json` alone.
 
 ### Recommended: Voyage AI (Best for RAG)
 
