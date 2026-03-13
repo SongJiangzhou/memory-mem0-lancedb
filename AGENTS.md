@@ -143,6 +143,18 @@ export class ToolName {
 - New and modified runtime code should use structured logger events instead of hand-built console strings.
 - Avoid large amounts of low-value logs. Log exceptions, fallbacks, retries, major state changes, and important branch decisions only.
 
+## Design Principles
+
+- Avoid over-engineering. Do not introduce heavy abstractions, extra state layers, or secondary subsystems unless they produce clear end-to-end recall or precision gains.
+- Avoid redundant pipelines and unnecessary multi-step flows. Prefer the shortest design that preserves or improves end-to-end memory precision and recall.
+- Judge architecture changes by first principles:
+  - does this improve retrieval quality
+  - does this reduce information loss
+  - does this reduce operational complexity
+  - does this improve observability without materially harming runtime behavior
+- Do not add process, classification, or maintenance stages that mainly increase complexity while degrading end-to-end memory precision/recall.
+- Prefer semantic and model-driven solutions over brittle heuristic layering, but do not add model calls unless the expected retrieval benefit justifies the added latency, cost, and failure surface.
+
 ## Key Dependencies
 
 - `@lancedb/lancedb`: Vector database for local memory storage
