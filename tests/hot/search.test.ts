@@ -404,6 +404,79 @@ test('hot plane search reuses a single query embedding for vector search and MMR
   }
 });
 
+test('hot plane search coalesces concurrent identical query embeddings', { concurrency: false }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
+
+  try {
+    const cfg = {
+      lancedbPath: dir,
+      mem0BaseUrl: '',
+      mem0ApiKey: '',
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+      autoRecall: { enabled: false, topK: 5, maxChars: 800, scope: 'all' as const },
+      autoCapture: { enabled: false, scope: 'long-term' as const, requireAssistantReply: true, maxCharsPerMessage: 2000 },
+      embedding: { provider: 'fake' as const, baseUrl: '', apiKey: '', model: '', dimension: 16 },
+    };
+    const store = new MemoryStoreTool(cfg);
+    const hot = new HotMemorySearch(cfg);
+    const originalEmbed = embedder.embedText;
+    let callCount = 0;
+    let release: (() => void) | null = null;
+
+    (embedder as any).embedText = async (...args: unknown[]) => {
+      callCount += 1;
+      if (String(args[0] || '').includes('McDonalds spring promo grilled chicken burger')) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return originalEmbed(...args as [string, typeof cfg.embedding]);
+    };
+
+    try {
+      await store.execute({
+        text: 'User prefers grilled chicken burgers at McDonalds during the spring promo',
+        userId: 'default',
+        scope: 'long-term',
+        categories: ['preference'],
+      });
+
+      const first = hot.search({
+        query: 'McDonalds spring promo grilled chicken burger',
+        userId: 'default',
+        topK: 5,
+        filters: { scope: 'long-term' },
+      });
+      const second = hot.search({
+        query: 'McDonalds spring promo grilled chicken burger',
+        userId: 'default',
+        topK: 5,
+        filters: { scope: 'long-term' },
+      });
+
+      for (let attempt = 0; attempt < 200 && !release; attempt += 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      }
+      assert.equal(callCount, 2);
+      if (!release) {
+        throw new Error('query embedding did not block as expected');
+      }
+      const unblock: () => void = release;
+      unblock();
+
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+      assert.ok(firstResult.memories.length >= 1);
+      assert.ok(secondResult.memories.length >= 1);
+      assert.equal(callCount, 2);
+    } finally {
+      (embedder as any).embedText = originalEmbed;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('hot plane password-style question prefers the memory containing the exact token', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hot-search-'));
 

@@ -1,4 +1,4 @@
-import { embedText } from './embedder';
+import * as embedder from './embedder';
 import { discoverMemoryTables } from './table-discovery';
 import { openMemoryTable } from '../db/table';
 import { getMemoryTableName } from '../db/schema';
@@ -6,7 +6,8 @@ import { buildMemoryDedupKeys } from '../memory/dedup';
 import { backfillLifecycleFields, isRecallEligibleLifecycleState } from '../memory/lifecycle';
 import { classifyQueryDomain, classifyQueryIntent, inferMemoryAnnotations, looksLikeCredentialQuery } from '../memory/typing';
 import { deriveRecallSizing } from '../recall/sizing';
-import type { MemoryDomain, MemoryRecord, PluginConfig, SearchParams, SearchResult } from '../types';
+import { EmbeddingClient } from '../runtime/embedding-client';
+import type { EmbeddingConfig, MemoryDomain, MemoryRecord, PluginConfig, SearchParams, SearchResult } from '../types';
 
 const RRF_K = 60;
 const MMR_LAMBDA = 0.5;
@@ -30,6 +31,11 @@ const SOURCE_KIND_WEIGHT: Record<string, number> = {
   assistant_inferred: 0,
   system_generated: -0.2,
 };
+const QUERY_EMBEDDING_TTL_MS = 30_000;
+const QUERY_EMBEDDING_MAX_CONCURRENT = 4;
+const QUERY_EMBEDDING_MAX_RETRIES = 2;
+const QUERY_EMBEDDING_BACKOFF_MS = 500;
+const sharedEmbeddingClients = new Map<string, EmbeddingClient>();
 
 export class HotMemorySearch {
   private readonly config: PluginConfig;
@@ -209,7 +215,7 @@ export class HotMemorySearch {
 
   private async getQueryVector(query: string): Promise<number[] | null> {
     try {
-      return await embedText(query, this.config.embedding);
+      return await getSharedEmbeddingClient(this.config.embedding).embed(query, this.config.embedding);
     } catch (error) {
       console.warn('[hot/search] Query embedding failed:', this.describeError(error));
       return null;
@@ -592,6 +598,29 @@ export class HotMemorySearch {
     }
     return [];
   }
+}
+
+function getSharedEmbeddingClient(cfg: EmbeddingConfig): EmbeddingClient {
+  const key = [
+    cfg.provider,
+    cfg.baseUrl || '',
+    cfg.model || '',
+    String(cfg.dimension || ''),
+  ].join('::');
+  const existing = sharedEmbeddingClients.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const client = new EmbeddingClient({
+    ttlMs: QUERY_EMBEDDING_TTL_MS,
+    maxConcurrent: QUERY_EMBEDDING_MAX_CONCURRENT,
+    maxRetries: QUERY_EMBEDDING_MAX_RETRIES,
+    baseBackoffMs: QUERY_EMBEDDING_BACKOFF_MS,
+    execute: (text, runtimeCfg) => embedder.embedText(text, runtimeCfg),
+  });
+  sharedEmbeddingClients.set(key, client);
+  return client;
 }
 
 function escapeSqlString(value: string): string {

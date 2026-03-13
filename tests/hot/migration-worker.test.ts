@@ -464,6 +464,44 @@ serialTest('migration worker upgrades a same-dimension legacy table without requ
   }
 });
 
+serialTest('migration worker reuses one embedding request for duplicate text rows in the same batch', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
+
+  try {
+    const legacyTable = await openMemoryTable(dir, 768);
+    await legacyTable.add([
+      makeLegacyRow({ memory_uid: 'memory-1', lancedb_row_key: 'memory-1', text: 'Shared duplicate text' }),
+      makeLegacyRow({ memory_uid: 'memory-2', lancedb_row_key: 'memory-2', text: 'Shared duplicate text' }),
+    ]);
+
+    class DedupingWorker extends EmbeddingMigrationWorker {
+      public embeddingRequests = 0;
+
+      protected override async requestEmbedding(): Promise<number[]> {
+        this.embeddingRequests += 1;
+        return new Array<number>(16).fill(0.25);
+      }
+    }
+
+    const worker = new DedupingWorker({
+      ...baseConfig,
+      lancedbPath: dir,
+      outboxDbPath: join(dir, 'outbox.json'),
+      auditStorePath: join(dir, 'audit', 'memory_records.jsonl'),
+    });
+
+    await worker.runOnce();
+
+    const currentTable = await openMemoryTable(dir, 16);
+    const migratedRows = await currentTable.query().toArray();
+
+    assert.equal(worker.embeddingRequests, 1);
+    assert.equal(migratedRows.length, 2);
+  } finally {
+    safeCleanup(dir);
+  }
+});
+
 serialTest('migration worker upgrades an active same-dimension table when session fields are missing', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'migration-worker-'));
 

@@ -1,5 +1,6 @@
 import type { RecallRerankerConfig, SearchResult } from '../types';
 import { stripPunctuation, longestCommonSubstringLength } from '../memory/text-utils';
+import { RerankClient } from '../runtime/rerank-client';
 
 const BASE_RANK_SCALE = 1;
 const SUBSTRING_MATCH_BOOST = 1.5;
@@ -7,6 +8,11 @@ const LCS_SCALE = 2.5;
 const BIGRAM_SCALE = 1.5;
 const QUERY_ECHO_PENALTY = 3;
 const OPERATIONAL_NOISE_PENALTY = 2.5;
+const RERANK_TTL_MS = 10_000;
+const RERANK_MAX_CONCURRENT = 2;
+const RERANK_MAX_RETRIES = 2;
+const RERANK_BACKOFF_MS = 500;
+const sharedRerankClients = new WeakMap<typeof fetch, Map<string, RerankClient>>();
 
 export interface RecallReranker {
   rerank(memories: SearchResult['memories'], query: string): Promise<SearchResult['memories']>;
@@ -49,10 +55,12 @@ export function createRecallReranker(
   }
 
   const localFallback = createLocalRecallReranker();
+  const client = getSharedRerankClient(config, fetchFn);
   return {
     async rerank(memories, query) {
       try {
-        const ranked = await rerankWithVoyage(memories, query, config, fetchFn);
+        const rankedIndexes = await client.rerank(query, memories.map((memory) => memory.text), config);
+        const ranked = applyRankedIndexes(memories, rankedIndexes);
         return ranked;
       } catch (error) {
         console.warn('[recall] Voyage reranker failed, falling back to local reranker:', error);
@@ -62,14 +70,42 @@ export function createRecallReranker(
   };
 }
 
+function getSharedRerankClient(config: RecallRerankerConfig, fetchFn: typeof fetch): RerankClient {
+  const key = [
+    config.provider,
+    config.baseUrl || '',
+    config.model || '',
+  ].join('::');
+  let clientsForFetch = sharedRerankClients.get(fetchFn);
+  if (!clientsForFetch) {
+    clientsForFetch = new Map<string, RerankClient>();
+    sharedRerankClients.set(fetchFn, clientsForFetch);
+  }
+
+  const existing = clientsForFetch.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const client = new RerankClient({
+    ttlMs: RERANK_TTL_MS,
+    maxConcurrent: RERANK_MAX_CONCURRENT,
+    maxRetries: RERANK_MAX_RETRIES,
+    baseBackoffMs: RERANK_BACKOFF_MS,
+    execute: (query, documents, runtimeConfig) => rerankWithVoyage(query, documents, runtimeConfig, fetchFn),
+  });
+  clientsForFetch.set(key, client);
+  return client;
+}
+
 async function rerankWithVoyage(
-  memories: SearchResult['memories'],
   query: string,
+  documents: string[],
   config: RecallRerankerConfig,
   fetchFn: typeof fetch,
-): Promise<SearchResult['memories']> {
-  if (memories.length <= 1) {
-    return memories;
+): Promise<number[]> {
+  if (documents.length <= 1) {
+    return documents.map((_value, index) => index);
   }
 
   const baseUrl = (config.baseUrl || 'https://api.voyageai.com/v1').replace(/\/$/, '');
@@ -82,7 +118,7 @@ async function rerankWithVoyage(
     body: JSON.stringify({
       model: config.model || 'rerank-2.5-lite',
       query,
-      documents: memories.map((memory) => memory.text),
+      documents,
     }),
   });
 
@@ -93,26 +129,47 @@ async function rerankWithVoyage(
   const body = await response.json() as { data?: Array<{ index?: number; relevance_score?: number }> };
   const scored = body.data ?? [];
   const rankedIndexes = new Set<number>();
-  const reranked: SearchResult['memories'] = [];
+  const orderedIndexes: number[] = [];
 
   scored
     .sort((left, right) => (right.relevance_score ?? 0) - (left.relevance_score ?? 0))
     .forEach((entry) => {
       const index = entry.index;
-      if (typeof index !== 'number' || index < 0 || index >= memories.length || rankedIndexes.has(index)) {
+      if (typeof index !== 'number' || index < 0 || index >= documents.length || rankedIndexes.has(index)) {
         return;
       }
       rankedIndexes.add(index);
-      reranked.push(memories[index]!);
+      orderedIndexes.push(index);
     });
 
-  memories.forEach((memory, index) => {
+  documents.forEach((_memory, index) => {
     if (!rankedIndexes.has(index)) {
-      reranked.push(memory);
+      orderedIndexes.push(index);
     }
   });
 
-  return reranked;
+  return orderedIndexes;
+}
+
+function applyRankedIndexes(memories: SearchResult['memories'], rankedIndexes: number[]): SearchResult['memories'] {
+  const seen = new Set<number>();
+  const ranked: SearchResult['memories'] = [];
+
+  for (const index of rankedIndexes) {
+    if (index < 0 || index >= memories.length || seen.has(index)) {
+      continue;
+    }
+    seen.add(index);
+    ranked.push(memories[index]!);
+  }
+
+  memories.forEach((memory, index) => {
+    if (!seen.has(index)) {
+      ranked.push(memory);
+    }
+  });
+
+  return ranked;
 }
 
 function computeRecallScore(text: string, normalizedQuery: string, index: number, total: number): number {

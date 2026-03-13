@@ -80,3 +80,115 @@ test('createRecallReranker falls back to local reranker when Voyage rerank fails
 
   assert.equal(ranked[0]?.text, 'User likes McDonalds grilled chicken burger');
 });
+
+test('createRecallReranker coalesces identical concurrent Voyage rerank requests', async () => {
+  const calls: Array<{ url: string; body: any }> = [];
+  let resolveCall: ((value: any) => void) | null = null;
+  const reranker = createRecallReranker(
+    {
+      provider: 'voyage',
+      baseUrl: 'https://api.voyageai.com/v1',
+      apiKey: 'voyage-key',
+      model: 'rerank-2.5-lite',
+    },
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(input), body: JSON.parse(String(init?.body || '{}')) });
+      return await new Promise((resolve) => {
+        resolveCall = resolve;
+      });
+    }) as typeof fetch,
+  );
+
+  const first = reranker.rerank(
+    [buildMemory('User likes tea'), buildMemory('User likes coffee')],
+    'What drink do I like during the morning commute?',
+  );
+  const second = reranker.rerank(
+    [buildMemory('User likes tea'), buildMemory('User likes coffee')],
+    'What drink do I like during the morning commute?',
+  );
+
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+
+  if (!resolveCall) {
+    throw new Error('fetch resolver not captured');
+  }
+  const release: (value: any) => void = resolveCall;
+  release({
+    ok: true,
+    json: async () => ({
+      data: [
+        { index: 1, relevance_score: 0.91 },
+        { index: 0, relevance_score: 0.42 },
+      ],
+    }),
+  });
+
+  const rankedFirst = await first;
+  const rankedSecond = await second;
+
+  assert.equal(rankedFirst[0]?.text, 'User likes coffee');
+  assert.equal(rankedSecond[0]?.text, 'User likes coffee');
+  assert.equal(calls.length, 1);
+});
+
+test('createRecallReranker reuses the shared Voyage client across reranker instances', async () => {
+  const calls: Array<{ url: string; body: any }> = [];
+  let resolveCall: ((value: any) => void) | null = null;
+  const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body || '{}')) });
+    return await new Promise((resolve) => {
+      resolveCall = resolve;
+    });
+  }) as typeof fetch;
+
+  const firstReranker = createRecallReranker(
+    {
+      provider: 'voyage',
+      baseUrl: 'https://api.voyageai.com/v1',
+      apiKey: 'voyage-key',
+      model: 'rerank-2.5-lite',
+    },
+    fetchFn,
+  );
+  const secondReranker = createRecallReranker(
+    {
+      provider: 'voyage',
+      baseUrl: 'https://api.voyageai.com/v1',
+      apiKey: 'voyage-key',
+      model: 'rerank-2.5-lite',
+    },
+    fetchFn,
+  );
+
+  const first = firstReranker.rerank(
+    [buildMemory('User likes tea'), buildMemory('User likes coffee')],
+    'What drink do I like during the shared client test?',
+  );
+  const second = secondReranker.rerank(
+    [buildMemory('User likes tea'), buildMemory('User likes coffee')],
+    'What drink do I like during the shared client test?',
+  );
+
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  if (!resolveCall) {
+    throw new Error('fetch resolver not captured');
+  }
+  const release: (value: any) => void = resolveCall;
+  release({
+    ok: true,
+    json: async () => ({
+      data: [
+        { index: 1, relevance_score: 0.91 },
+        { index: 0, relevance_score: 0.42 },
+      ],
+    }),
+  });
+
+  const [rankedFirst, rankedSecond] = await Promise.all([first, second]);
+  assert.equal(rankedFirst[0]?.text, 'User likes coffee');
+  assert.equal(rankedSecond[0]?.text, 'User likes coffee');
+  assert.equal(calls.length, 1);
+});

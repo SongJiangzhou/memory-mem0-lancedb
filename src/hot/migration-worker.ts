@@ -6,6 +6,7 @@ import type { PluginDebugLogger } from '../debug/logger';
 import { embedText } from './embedder';
 import { discoverMemoryTables, resolveLanceDbPath } from './table-discovery';
 import { backfillLifecycleFields } from '../memory/lifecycle';
+import { EmbeddingClient } from '../runtime/embedding-client';
 import type { PluginConfig } from '../types';
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
@@ -43,6 +44,7 @@ type MigrationBatchResult = {
 export class EmbeddingMigrationWorker {
   private readonly config: PluginConfig;
   private readonly debug?: PluginDebugLogger;
+  private readonly embeddingClient: EmbeddingClient;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private loopEnabled = false;
@@ -51,6 +53,16 @@ export class EmbeddingMigrationWorker {
   constructor(config: PluginConfig, debug?: PluginDebugLogger) {
     this.config = config;
     this.debug = debug;
+    this.embeddingClient = new EmbeddingClient({
+      ttlMs: EMBEDDING_RATE_LIMIT_COOLDOWN_MS,
+      maxRetries: EMBEDDING_429_MAX_RETRIES,
+      baseBackoffMs: EMBEDDING_429_BASE_BACKOFF_MS,
+      sleep: (delayMs) => this.sleep(delayMs),
+      execute: async (text) => {
+        await this.waitForEmbeddingSlot();
+        return this.requestEmbedding(text);
+      },
+    });
   }
 
   start(intervalMs: number = this.getMigrationConfig().intervalMs): void {
@@ -249,26 +261,19 @@ export class EmbeddingMigrationWorker {
   }
 
   private async embedLegacyText(text: string): Promise<number[]> {
-    let retryCount = 0;
-
-    while (true) {
-      await this.waitForEmbeddingSlot();
-      try {
-        return await this.requestEmbedding(text);
-      } catch (error) {
-        if (!isRetryableRateLimitError(error) || retryCount >= EMBEDDING_429_MAX_RETRIES) {
-          throw error;
-        }
-
-        const delayMs = EMBEDDING_429_BASE_BACKOFF_MS * (2 ** retryCount);
-        retryCount += 1;
+    try {
+      return await this.embeddingClient.embed(text, this.config.embedding);
+    } catch (error) {
+      if (isRetryableRateLimitError(error)) {
+        const retryCount = EMBEDDING_429_MAX_RETRIES + 1;
+        const delayMs = EMBEDDING_429_BASE_BACKOFF_MS * (2 ** (EMBEDDING_429_MAX_RETRIES - 1));
         this.debug?.warn('embedding_migration.retry_backoff', {
           retryCount,
           delayMs,
           message: error instanceof Error ? error.message : String(error),
         });
-        await this.sleep(delayMs);
       }
+      throw error;
     }
   }
 
