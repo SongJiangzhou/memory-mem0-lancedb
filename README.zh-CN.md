@@ -74,7 +74,9 @@ graph TD
 
 ### 1. 安装
 
-在 OpenClaw 工作区中运行安装脚本：
+优先通过 OpenClaw 的插件安装流程或 ClawHub 安装本插件。这个仓库的主要发布形态是 plugin，而不是依赖脚本驱动安装的 skill。
+
+如果你已经克隆仓库，或者想手动做一次 bootstrap，也可以使用辅助脚本：
 
 ```bash
 cd plugins/openclaw-mem0-lancedb
@@ -119,6 +121,14 @@ bash scripts/install.sh
 ```
 
 *提示：开启 `autoCapture` 和 `autoRecall` 后，插件会进入默认的 `hook-first` 模式。Agent 无需显式调用工具，也能自动沉淀与召回记忆。*
+
+### 3. 选择 Mem0 模式
+
+- `local`：最适合自托管，默认连接 `http://127.0.0.1:8000`
+- `remote`：使用 Mem0 Cloud，需要填写 `mem0.apiKey`
+- `disabled`：只保留 LanceDB 本地召回和手动记忆能力，自动抽取和外部同步会受限
+
+安装脚本只是可选的便利工具。用户应当仅通过 `openclaw.plugin.json` 和 `openclaw.json` 就能理解并配置这个插件。
 
 ### 高阶推荐：Voyage AI (最佳检索体验)
 

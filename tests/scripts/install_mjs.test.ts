@@ -74,9 +74,9 @@ serialTest('install.mjs --yes writes defaults into openclaw.json', () => {
   assert.equal(pluginConfig?.autoRecall?.reranker?.apiKey, '');
   assert.equal(pluginConfig?.autoRecall?.reranker?.model, 'rerank-2.5-lite');
   assert.equal(pluginConfig?.autoCapture?.enabled, true);
-  assert.equal(pluginConfig?.autoCapture?.scope, 'long-term');
   assert.equal(pluginConfig?.autoCapture?.requireAssistantReply, true);
   assert.equal(pluginConfig?.autoCapture?.maxCharsPerMessage, 2000);
+  assert.equal('scope' in (pluginConfig?.autoCapture || {}), false);
 });
 
 serialTest('install.mjs --skip-config leaves openclaw.json unchanged', () => {
